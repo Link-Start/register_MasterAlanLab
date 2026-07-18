@@ -11,11 +11,11 @@
 [![Telegram](https://img.shields.io/badge/Telegram-0088CC?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/MasterAlanLab_Channel)
 
 ### 🔧 资源推荐
-- [YesCaptcha](https://cutt.ly/Mywt39r0)（自动验证码识别工具）
-- [订阅合租拼车](https://cutt.ly/5ywt8vb4)
-- [海外账号、电话卡](https://cutt.ly/dywt86NC)
-- [满血CC、GPT中转站](https://cutt.ly/JywJG3G5)(返90%佣金)
-- [Telegram 搜索机器人](https://cutt.ly/2yeh3GOE)
+- [YesCaptcha](https://cutt.ly/Mywt39r0)（自动验证码识别工具，便宜，好用）
+- [订阅合租拼车](https://cutt.ly/5ywt8vb4)（国外合租平台，可以合租各种影视会员、AI订阅）
+- [海外账号、电话卡](https://cutt.ly/dywt86NC)（TG账号、TikTok账号等等海外平台账号）
+- [满血CC、GPT中转站](https://cutt.ly/JywJG3G5)（可以确认不掺水，缺点是价格偏高）
+- [Telegram 搜索机器人](https://cutt.ly/2yeh3GOE)(TG 最强搜素引擎，试试看吧)
 
 ### ⚠️ 重要提示
 - exa 关闭了邮箱注册，目前不可用

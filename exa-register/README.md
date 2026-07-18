@@ -48,8 +48,8 @@ uv run python exa_core.py
 - 没写入 key：看日志是否校验失败，或 dashboard 没渲染完整 key
 
 ## 资源推荐
-- [YesCaptcha](https://cutt.ly/Mywt39r0)（自动验证码识别工具）
-- [订阅合租拼车](https://cutt.ly/5ywt8vb4)
-- [海外账号、电话卡](https://cutt.ly/dywt86NC)
-- [满血CC、GPT中转站](https://cutt.ly/JywJG3G5)(返90%佣金)
-- [Telegram 搜索机器人](https://cutt.ly/2yeh3GOE)
+- [YesCaptcha](https://cutt.ly/Mywt39r0)（自动验证码识别工具，便宜，好用）
+- [订阅合租拼车](https://cutt.ly/5ywt8vb4)（国外合租平台，可以合租各种影视会员、AI订阅）
+- [海外账号、电话卡](https://cutt.ly/dywt86NC)（TG账号、TikTok账号等等海外平台账号）
+- [满血CC、GPT中转站](https://cutt.ly/JywJG3G5)（可以确认不掺水，缺点是价格偏高）
+- [Telegram 搜索机器人](https://cutt.ly/2yeh3GOE)(TG 最强搜素引擎，试试看吧)
