@@ -1,7 +1,0 @@
-.alma-snapshots
-.env
-__pycache__/
-*.pyc
-.venv/
-venv/
-exa_apikeys.txt
