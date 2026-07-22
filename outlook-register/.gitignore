@@ -1,5 +1,0 @@
-.env
-.ruff_cache/
-Results/*.txt
-__pycache__/
-*.py[cod]
