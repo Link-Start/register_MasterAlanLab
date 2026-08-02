@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().with_name(".env"), override=False)
 
 # Tavily 相关配置
+TAVILY_MARKETING_URL = "https://www.tavily.com/"
 TAVILY_HOME_URL = "https://app.tavily.com/home"
 
 # Output stays beside the script even when main.py is launched from another directory.

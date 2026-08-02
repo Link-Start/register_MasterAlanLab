@@ -369,14 +369,25 @@ class FakeCopyButton:
         return ""
 
 
+class FakeActionButton(FakeCopyButton):
+    def __init__(self, action):
+        super().__init__()
+        self.action = action
+
+    def click(self):
+        super().click()
+        self.action()
+
+
 class FakeCopyPage:
-    def __init__(self, button):
+    def __init__(self, button, target_selector='button:has-text("Copy key")'):
         self.button = button
+        self.target_selector = target_selector
         self.selectors = []
 
     def query_selector_all(self, selector):
         self.selectors.append(selector)
-        if selector == 'button:has-text("Copy key")':
+        if selector == self.target_selector:
             return [self.button]
         return []
 
@@ -390,7 +401,10 @@ class FakeVerificationHomePage:
 
     def wait_for_selector(self, selector, **kwargs):
         self.waited_selectors.append((selector, kwargs))
-        if selector == '[id^="chakra-modal--body-"] button:has-text("Continue")':
+        if selector == (
+            '[role="dialog"]:has-text("Stay updated about Tavily!") '
+            'button:has-text("Continue")'
+        ):
             return self.close_button
         if selector == "#onetrust-accept-btn-handler":
             return self.cookie_button
@@ -398,6 +412,55 @@ class FakeVerificationHomePage:
 
     def query_selector_all(self, selector):
         return []
+
+
+class FakeOnboardingPage:
+    def __init__(self):
+        self.url = "https://app.tavily.com/onboarding/intent"
+        self.stage = "setup"
+        self.waited_selectors = []
+        self.wait_url_calls = []
+        self.timeout_waits = []
+        self.skip_button = FakeActionButton(self._show_confirmation)
+        self.confirm_button = FakeActionButton(self._finish_onboarding)
+
+    def _show_confirmation(self):
+        self.stage = "confirm"
+
+    def _finish_onboarding(self):
+        self.stage = "done"
+        self.url = "https://app.tavily.com/home"
+
+    def wait_for_selector(self, selector, **kwargs):
+        self.waited_selectors.append((selector, kwargs))
+        if self.stage == "setup" and 'button:has-text("Skip setup")' == selector:
+            return self.skip_button
+        if (
+            self.stage == "confirm"
+            and '[role="dialog"] button:has-text("Skip anyway")' == selector
+        ):
+            return self.confirm_button
+        return None
+
+    def wait_for_url(self, matcher, **kwargs):
+        self.wait_url_calls.append((matcher, kwargs))
+        if callable(matcher) and matcher(self.url):
+            return None
+        raise AssertionError(f"URL did not match: {self.url}")
+
+    def wait_for_timeout(self, timeout):
+        self.timeout_waits.append(timeout)
+
+
+class FakeDelayedSetupPage:
+    def __init__(self):
+        self.url = "https://app.tavily.com/home"
+        self.waited_selectors = []
+
+    def wait_for_selector(self, selector, **kwargs):
+        self.waited_selectors.append((selector, kwargs))
+        self.url = "https://app.tavily.com/onboarding/intent"
+        return FakeCopyButton()
 
 
 class FakeLocator:
@@ -410,17 +473,21 @@ class FakeLocator:
 
 class FakeNavigationPage:
     def __init__(self):
-        self.url = "https://auth.tavily.com/u/login/identifier?state=test"
+        self.url = "about:blank"
         self.goto_calls = []
         self.wait_url_calls = []
         self.email_locator = FakeLocator()
 
     def goto(self, url, **kwargs):
         self.goto_calls.append((url, kwargs))
+        self.url = url
 
     def wait_for_url(self, url, **kwargs):
         self.wait_url_calls.append((url, kwargs))
-        self.url = "https://auth.tavily.com/u/signup/identifier?state=test"
+        if "/u/login/" in url:
+            self.url = "https://auth.tavily.com/u/login/identifier?state=test"
+        else:
+            self.url = "https://auth.tavily.com/u/signup/identifier?state=test"
 
     def locator(self, selector):
         assert selector == "input#email"
@@ -472,11 +539,17 @@ class AutomationLifecycleTests(unittest.TestCase):
         automation = TavilyAutomation(mail_provider=FakeMailProvider())
         page = FakeNavigationPage()
         automation.page = page
-        automation.click_element = lambda _name: True
+        clicked = []
+        automation.click_element = lambda name: clicked.append(name) or True
 
         self.assertTrue(automation.navigate_to_signup())
+        self.assertEqual(page.goto_calls[0][0], "https://www.tavily.com/")
         self.assertEqual(page.goto_calls[0][1]["wait_until"], "domcontentloaded")
-        self.assertEqual(page.wait_url_calls[0][0], "**/u/signup/**")
+        self.assertEqual(clicked, ["login_button", "signup_button"])
+        self.assertEqual(
+            [call[0] for call in page.wait_url_calls],
+            ["**/u/login/**", "**/u/signup/**"],
+        )
         self.assertEqual(
             page.email_locator.wait_calls,
             [{"state": "visible", "timeout": 30000}],
@@ -496,6 +569,51 @@ class ApiKeyCopyTests(unittest.TestCase):
 
         self.assertEqual(checker._click_copy_key_button(), "tvly-copied-key")
         self.assertEqual(button.click_count, 1)
+
+    @patch("email_checker.human_delay", return_value=0)
+    @patch("email_checker.wait_with_message", return_value=None)
+    def test_uses_recorded_overview_copy_button_selector(self, _wait, _delay):
+        from email_checker import EmailChecker
+
+        selector = "#api-keys-table button.hover\\:text-\\[\\#66dd44\\]"
+        button = FakeCopyButton()
+        checker = EmailChecker()
+        checker.page = FakeCopyPage(button, target_selector=selector)
+        checker._read_clipboard_api_key = lambda: "tvly-overview-key"
+
+        self.assertEqual(checker._click_copy_key_button(), "tvly-overview-key")
+        self.assertIn(selector, checker.page.selectors)
+        self.assertEqual(button.click_count, 1)
+
+    @patch("email_checker.human_delay", return_value=0)
+    def test_skips_new_onboarding_with_confirmation(self, _delay):
+        from email_checker import EmailChecker
+
+        checker = EmailChecker()
+        checker.page = FakeOnboardingPage()
+
+        self.assertTrue(checker.skip_setup_if_present())
+        self.assertEqual(checker.page.stage, "done")
+        self.assertEqual(checker.page.skip_button.click_count, 1)
+        self.assertEqual(checker.page.confirm_button.click_count, 1)
+        self.assertEqual(len(checker.page.wait_url_calls), 1)
+
+    def test_detects_delayed_home_to_onboarding_redirect(self):
+        from email_checker import EmailChecker
+
+        checker = EmailChecker()
+        checker.page = FakeDelayedSetupPage()
+
+        self.assertEqual(checker.wait_for_setup_or_api_keys(), "setup")
+        self.assertEqual(
+            checker.page.waited_selectors,
+            [
+                (
+                    'button:has-text("Skip setup"), #api-keys-table, #api-key',
+                    {"state": "visible", "timeout": 30000},
+                )
+            ],
+        )
 
     @patch("email_checker.human_delay", return_value=0)
     @patch("email_checker.wait_with_message", return_value=None)
@@ -526,12 +644,21 @@ class ApiKeyCopyTests(unittest.TestCase):
             checker.page.waited_selectors,
             [
                 (
-                    '[id^="chakra-modal--body-"] button:has-text("Continue")',
+                    'button:has-text("Skip setup"), #api-keys-table, #api-key',
+                    {"state": "visible", "timeout": 30000},
+                ),
+                (
+                    '[role="dialog"]:has-text("Stay updated about Tavily!") '
+                    'button:has-text("Continue")',
                     {"state": "visible", "timeout": 8000},
                 ),
                 (
                     "#onetrust-accept-btn-handler",
                     {"state": "visible", "timeout": 3000},
+                ),
+                (
+                    "#api-keys-table, #api-key",
+                    {"state": "visible", "timeout": 20000},
                 ),
             ],
         )

@@ -6,7 +6,7 @@ Tavily 邮箱验证、登录与 API key 页面操作。
 import shutil
 import subprocess
 
-from config import BROWSER_TIMEOUT
+from config import BROWSER_TIMEOUT, TAVILY_HOME_URL
 from utils import extract_api_key, human_delay, mask_api_key, wait_with_message
 
 
@@ -36,6 +36,22 @@ class EmailChecker:
     def _human_press(self, target, key, action):
         human_delay(action)
         target.press(key)
+
+    def _wait_for_first_visible(self, selectors, timeout=10000):
+        """按顺序查找第一个可见元素，避免依赖录制脚本中的动态 class/id。"""
+        per_selector_timeout = max(1000, timeout // max(1, len(selectors)))
+        for selector in selectors:
+            try:
+                element = self.page.wait_for_selector(
+                    selector,
+                    state="visible",
+                    timeout=per_selector_timeout,
+                )
+                if element:
+                    return element, selector
+            except Exception:
+                continue
+        return None, None
 
     def navigate_to_verification_link(self, verification_link):
         """导航到验证链接并处理弹窗"""
@@ -275,29 +291,58 @@ class EmailChecker:
             return True
 
     def get_api_key_from_tavily(self):
-        """点击 Tavily 的复制按钮，并从剪贴板获取 API key。"""
+        """跳过新用户 setup，进入 Overview 并通过复制按钮获取 key。"""
         try:
             print("🔑 开始复制 API key...")
 
-            # 等待页面完全加载
+            # 验证链接现在会把新用户带到 onboarding。录制流程为
+            # Skip setup -> Skip anyway -> Continue -> Overview/API Keys。
             wait_with_message(2, "等待页面加载")
+            print(f"📋 当前页面: {self.page.url}")
 
-            current_url = self.page.url
-            print(f"📋 当前页面: {current_url}")
+            home_url = TAVILY_HOME_URL
+            if "app.tavily.com" not in self.page.url:
+                print(f"🏠 导航到 Overview: {home_url}")
+                self._human_goto(home_url, "打开 Tavily Overview")
+            elif "/onboarding" not in self.page.url and "home" not in self.page.url:
+                self._human_goto(home_url, "打开 Tavily Overview")
 
-            # 如果不在home页面，先导航到home页面
-            if "app.tavily.com/home" not in current_url:
-                home_url = "https://app.tavily.com/home"
-                print(f"🏠 导航到home页面: {home_url}")
-                self._human_goto(home_url, "打开 Tavily 首页")
-                wait_with_message(2, "等待home页面加载")
+            # /home 初次渲染时会先显示加载页，待账户资料返回后
+            # 才转到 /onboarding。等待明确的 setup 按钮或 API Keys 表格，
+            # 不再依赖固定 2 秒的 URL 检查时机。
+            destination = self.wait_for_setup_or_api_keys(timeout=30000)
+            if destination == "setup":
+                if not self.skip_setup_if_present():
+                    raise RuntimeError("跳过 Tavily setup 失败")
+                self._human_goto(home_url, "跳过 setup 后返回 Overview")
+                destination = self.wait_for_setup_or_api_keys(timeout=30000)
 
-            self.close_verification_success_popup()
+            # 极端情况下第二次打开 /home 仍可能触发延迟重定向。
+            if destination == "setup" or "/onboarding" in self.page.url:
+                if not self.skip_setup_if_present():
+                    raise RuntimeError("跳过 Tavily setup 失败")
+                self._human_goto(home_url, "返回 Tavily Overview")
+                self.wait_for_setup_or_api_keys(timeout=30000)
+
+            self.close_marketing_popup_if_present()
             self.close_cookie_consent_if_present()
 
-            api_key = self._click_copy_key_button()
-            if api_key:
-                return api_key
+            try:
+                self.page.wait_for_selector(
+                    "#api-keys-table, #api-key",
+                    state="visible",
+                    timeout=20000,
+                )
+            except Exception:
+                pass
+
+            # API Keys 表格可能在账户请求结束后才渲染，有界重试。
+            for attempt in range(3):
+                api_key = self._click_copy_key_button()
+                if api_key:
+                    return api_key
+                if attempt < 2:
+                    wait_with_message(2, "API key 尚未就绪，等待重试")
 
             # 某些页面只有显示完整 key 后，复制按钮才会可用。
             print("👁️ 首次复制失败，尝试显示完整 API key 后重试...")
@@ -319,8 +364,82 @@ class EmailChecker:
             print(f"❌ 获取API key失败: {e}")
             return None
 
+    def wait_for_setup_or_api_keys(self, timeout=30000):
+        """等待 Next.js 确定新用户的真实落地页。"""
+        selector = 'button:has-text("Skip setup"), #api-keys-table, #api-key'
+        print("⏳ 等待 Tavily setup 或 API Keys 页面...")
+        try:
+            element = self.page.wait_for_selector(
+                selector,
+                state="visible",
+                timeout=timeout,
+            )
+        except Exception:
+            element = None
+
+        if "/onboarding" in self.page.url:
+            print(f"✅ 已进入 Tavily setup: {self.page.url}")
+            return "setup"
+
+        if element:
+            try:
+                if "Skip setup" in element.inner_text():
+                    print("✅ 已显示 Skip setup")
+                    return "setup"
+            except Exception:
+                pass
+            print("✅ API Keys 区域已加载")
+            return "api_keys"
+
+        print(f"⚠️ 等待落地页超时，当前 URL: {self.page.url}")
+        return "unknown"
+
+    def skip_setup_if_present(self):
+        """处理新 onboarding 的二次确认：Skip setup -> Skip anyway。"""
+        print("⏭️ 检测到新用户 setup，准备跳过...")
+        skip_button, selector = self._wait_for_first_visible(
+            [
+                'button:has-text("Skip setup")',
+                'header button:has-text("Skip setup")',
+                'text="Skip setup"',
+            ],
+            timeout=20000,
+        )
+        if not skip_button:
+            print("⚠️ onboarding 页面未找到 Skip setup")
+            return False
+
+        print(f"✅ 找到 Skip setup: {selector}")
+        self._human_click(skip_button, "点击 Skip setup")
+
+        confirm_button, selector = self._wait_for_first_visible(
+            [
+                '[role="dialog"] button:has-text("Skip anyway")',
+                'button:has-text("Skip anyway")',
+                'text="Skip anyway"',
+            ],
+            timeout=10000,
+        )
+        if not confirm_button:
+            print("⚠️ 未找到 Skip anyway 确认按钮")
+            return False
+
+        print(f"✅ 找到 Skip anyway: {selector}")
+        self._human_click(confirm_button, "确认 Skip anyway")
+        try:
+            self.page.wait_for_url(
+                lambda url: "/onboarding" not in str(url),
+                wait_until="domcontentloaded",
+                timeout=30000,
+            )
+        except Exception:
+            # 后续会显式打开 /home，这里不依赖某一个固定落地路由。
+            self.page.wait_for_timeout(1500)
+        print("✅ 已跳过 Tavily setup")
+        return True
+
     def _click_copy_key_button(self):
-        """按稳定属性和图标特征查找复制按钮，点击后读取 key。"""
+        """在 Overview/API Keys 表格中点击复制按钮，然后读取 key。"""
         selectors = [
             'button:has-text("Copy key")',
             'button:has-text("Copy API key")',
@@ -328,6 +447,8 @@ class EmailChecker:
             'button[aria-label*="copy" i]',
             'button[title*="copy" i]',
             'button[data-testid*="copy" i]',
+            # 录制脚本中的当前 Overview 复制按钮，优先限定到 API Keys 表格。
+            "#api-keys-table button.hover\\:text-\\[\\#66dd44\\]",
             "button.hover\\:text-\\[\\#66dd44\\]",
             'button:has(svg rect[x="9"][y="9"])',
             'button:has(svg path[d*="M5 15H4"])',
@@ -370,12 +491,14 @@ class EmailChecker:
 
         return None
 
-    def close_verification_success_popup(self):
-        """关闭邮箱验证完成后出现的 Tavily 订阅弹窗。"""
+    def close_marketing_popup_if_present(self):
+        """点击 Continue 关闭验证后的营销订阅弹窗。"""
         print('🔍 检查 "Stay updated about Tavily!" 弹窗...')
 
-        # 录制脚本中的 id 后缀（如 :ri:）会动态变化，只匹配稳定前缀。
-        primary_selector = '[id^="chakra-modal--body-"] button:has-text("Continue")'
+        primary_selector = (
+            '[role="dialog"]:has-text("Stay updated about Tavily!") '
+            'button:has-text("Continue")'
+        )
         try:
             button = self.page.wait_for_selector(
                 primary_selector,
@@ -391,8 +514,8 @@ class EmailChecker:
             pass
 
         fallback_selectors = [
-            '[role="dialog"]:has-text("Stay updated about Tavily!") '
-            'button:has-text("Continue")',
+            # 录制中的 chakra-modal--body-:r24: 后缀每次都可能不同。
+            '[id^="chakra-modal--body-"] button:has-text("Continue")',
             '[id^="chakra-modal--body-"] button',
         ]
         for selector in fallback_selectors:
@@ -414,6 +537,9 @@ class EmailChecker:
 
         print("ℹ️ 当前没有需要关闭的验证成功弹窗")
         return False
+
+    # 保留旧方法名，便于外部调用方平滑更新。
+    close_verification_success_popup = close_marketing_popup_if_present
 
     def close_cookie_consent_if_present(self):
         """可选关闭右下角的 OneTrust Cookie 弹窗。"""

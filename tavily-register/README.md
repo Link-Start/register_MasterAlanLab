@@ -55,10 +55,11 @@ uv run python main.py
 1. 按固定名称查找或首次创建唯一的比特浏览器窗口。
 2. 关闭浏览器数据同步，重新生成本轮指纹并调用 `/browser/open`。
 3. Playwright 使用 `connect_over_cdp()` 接管比特浏览器窗口。
-4. 配置的临时邮箱 provider 生成或分配邮箱并注册 Tavily。
+4. 打开 `www.tavily.com`，按 `Login -> Sign up` 进入 Auth0 分步注册页，使用临时邮箱 provider 生成或分配的邮箱完成注册。
 5. provider 轮询验证邮件，从邮件 HTML 中提取 Tavily 验证链接。
-6. 在同一个比特浏览器页面中完成验证、登录和 API Key 获取。
-7. 保存 key 后关闭窗口，清除 Cookie 和缓存，但保留窗口 ID 供下一轮复用。
+6. 验证后按 `Skip setup -> Skip anyway -> Continue` 跳过新用户向导并关闭订阅弹窗。
+7. 进入 Overview 的 API Keys 表格，点击复制按钮并从剪贴板读取完整 key。
+8. 保存 key 后关闭窗口，清除 Cookie 和缓存，但保留窗口 ID 供下一轮复用。
 
 ## 项目结构
 
@@ -81,7 +82,7 @@ tavily-register/
 
 ## 输出
 
-最后一步会点击页面上的复制 key 按钮，并将成功结果追加保存到 `api_keys.txt`：
+最后一步会在 Overview 的 API Keys 表格中点击复制按钮，并将剪贴板中的成功结果追加保存到 `api_keys.txt`：
 
 ```text
 tvly-xxxxxxxxxxxxxxxx

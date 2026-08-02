@@ -13,7 +13,7 @@ from config import (
     BIT_BROWSER_NAME,
     BROWSER_TIMEOUT,
     HEADLESS,
-    TAVILY_HOME_URL,
+    TAVILY_MARKETING_URL,
 )
 from mail_provider import create_mail_provider
 from utils import generate_password, human_delay, mask_api_key, save_api_key
@@ -33,17 +33,28 @@ class TavilyAutomation:
         self.mail_provider = mail_provider or create_mail_provider()
         self.owns_mail_provider = mail_provider is None
 
-        # Registration and login selectors, ordered from stable to fallback.
+        # Registration selectors, ordered from stable to fallback. Tavily now
+        # starts registration on the marketing site: Login -> Auth0 -> Sign up.
         self.selectors = {
-            "signup_button": {
+            "login_button": {
                 "primary": [
-                    'a[href*="/u/signup/identifier"]',  # Auth0动态注册链接
-                    'a:has-text("Sign up")',  # 最稳定：基于文本内容
-                    'a[href*="signup"]',  # 稳定：基于URL特征
+                    'header button:has-text("Login")',
+                    'button:has-text("Login")',
                 ],
                 "fallback": [
-                    'p:has-text("Don\'t have an account?") a',  # 基于父元素上下文
-                    'a[class*="c7c2d7b15"]',  # 基于部分class（如果稳定）
+                    'button[class*="Button-module"]:has-text("Login")',
+                    'text="Login"',
+                ],
+            },
+            "signup_button": {
+                "primary": [
+                    'a:has-text("Sign up")',
+                    'a[href*="/u/signup/identifier"]',
+                    'a[href*="signup"]',
+                ],
+                "fallback": [
+                    'p:has-text("Don\'t have an account?") a',
+                    'text="Sign up"',
                 ],
             },
             "email_input": {
@@ -276,12 +287,12 @@ class TavilyAutomation:
         return False
 
     def navigate_to_signup(self):
-        """导航到注册页面"""
+        """从 Tavily 官网的 Login 入口进入 Auth0 注册页。"""
         try:
-            self.log("🌐 正在访问Tavily主页...")
+            self.log("🌐 正在访问 Tavily 官网...")
             human_delay("打开 Tavily 主页")
             self.page.goto(
-                TAVILY_HOME_URL,
+                TAVILY_MARKETING_URL,
                 wait_until="domcontentloaded",
                 timeout=60000,
             )
@@ -294,22 +305,31 @@ class TavilyAutomation:
                 self.log("✅ 当前已经位于注册页面")
                 return True
 
-            # Follow the dynamic Auth0 sign-up link.
-            if self.click_element("signup_button"):
+            # 录制的新流程先在官网点 Login，再在 Auth0 页点 Sign up。
+            if "/u/login/" not in self.page.url:
+                if not self.click_element("login_button"):
+                    self.log("❌ 未找到 Tavily 官网的 Login 按钮")
+                    return False
                 self.page.wait_for_url(
-                    "**/u/signup/**",
+                    "**/u/login/**",
                     wait_until="domcontentloaded",
                     timeout=30000,
                 )
-                self.page.locator("input#email").wait_for(
-                    state="visible", timeout=30000
-                )
-                self.log("✅ 成功导航到注册页面")
-                return True
 
-            # Auth0注册链接包含动态state，不能使用固定URL作为后备。
-            self.log("❌ 未找到可用的Sign Up链接")
-            return False
+            if not self.click_element("signup_button"):
+                self.log("❌ 未找到 Auth0 页面的 Sign up 链接")
+                return False
+
+            self.page.wait_for_url(
+                "**/u/signup/**",
+                wait_until="domcontentloaded",
+                timeout=30000,
+            )
+            self.page.locator("input#email").wait_for(
+                state="visible", timeout=30000
+            )
+            self.log("✅ 成功导航到 Auth0 注册页面")
+            return True
 
         except Exception as e:
             self.log(f"❌ 导航到注册页面失败: {e}")
@@ -436,6 +456,8 @@ class TavilyAutomation:
                 if not account_helper.login_to_tavily(self.email, self.password):
                     raise Exception("Tavily登录失败")
                 self.log("✅ Tavily登录成功!")
+            elif result is not True:
+                raise Exception("Tavily 邮箱验证页跳转失败")
 
             # 获取API key
             self.log("🔑 获取API key...")
