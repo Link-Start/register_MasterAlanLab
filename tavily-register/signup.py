@@ -30,7 +30,7 @@ except ImportError:
     HAS_PLAYWRIGHT = False
 
 # Fix Windows console encoding + ensure logs are flushed promptly.
-# batch_signup.py imports this module; if stdout gets wrapped without line buffering,
+# main.py imports this module; if stdout gets wrapped without line buffering,
 # prints may appear delayed. Prefer reconfigure when available.
 if sys.platform == "win32":
     try:
@@ -81,19 +81,41 @@ def load_config(config_path: str = None) -> dict:
     return config
 
 
-def create_session() -> requests.Session:
-    """
-    创建配置好的请求会话
+try:
+    from curl_cffi import requests as curl_requests
+    HAS_CURL_CFFI = True
+except ImportError:
+    curl_requests = None
+    HAS_CURL_CFFI = False
 
-    Returns:
-        requests.Session 对象
+
+def create_session(proxy: str | None = None):
     """
+    创建配置好的请求会话 (优先使用 curl_cffi 模拟真实浏览器 TLS 握手)
+    """
+    if proxy and not proxy.startswith(("http://", "https://", "socks5://")):
+        proxy = f"http://{proxy}"
+
+    proxies = {"http": proxy, "https": proxy} if proxy else None
+
+    if HAS_CURL_CFFI:
+        session = curl_requests.Session(impersonate="chrome")
+        session.headers.update({
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        })
+        if proxies:
+            session.proxies = proxies
+        return session
+
     session = requests.Session()
     session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
     })
+    if proxies:
+        session.proxies = proxies
     return session
 
 
@@ -214,22 +236,127 @@ def get_signup_page(session: requests.Session, return_to: str = "/home") -> dict
     return result
 
 
+def extract_turnstile_sitekey(html: str) -> str | None:
+    if not html:
+        return None
+    patterns = [
+        r'data-captcha-sitekey=["\']([^"\']+)["\']',
+        r'data-sitekey=["\']([^"\']+)["\']',
+        r'sitekey:\s*["\']([^"\']+)["\']',
+        r'["\']sitekey["\']\s*:\s*["\']([^"\']+)["\']',
+        r'0x4[A-Za-z0-9_-]{15,35}',
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, html)
+        if m:
+            key = m.group(1) if m.groups() else m.group(0)
+            if key.startswith("0x4"):
+                return key
+    return None
+
+
+YESCAPTCHA_SOFT_ID = 102154
+
+
+def solve_turnstile_with_yescaptcha(sitekey: str, page_url: str, config: dict) -> str | None:
+    print(f"[6] 使用 YesCaptcha 识别 Turnstile 验证码 (SiteKey: {sitekey})...")
+    client_key = (
+        config.get("YESCAPTCHA_CLIENT_KEY")
+        or config.get("YESCAPTCHA_KEY")
+        or os.getenv("YESCAPTCHA_CLIENT_KEY")
+        or os.getenv("YESCAPTCHA_KEY")
+        or ""
+    ).strip()
+    if not client_key:
+        print("    错误: 未配置 YESCAPTCHA_CLIENT_KEY / YESCAPTCHA_KEY")
+        return None
+
+    create_payload = {
+        "clientKey": client_key,
+        "task": {
+            "type": "TurnstileTaskProxyless",
+            "websiteURL": page_url,
+            "websiteKey": sitekey,
+        },
+        "softID": YESCAPTCHA_SOFT_ID,
+    }
+
+    try:
+        response = requests.post(
+            "https://api.yescaptcha.com/createTask",
+            json=create_payload,
+            timeout=30,
+        )
+        response.raise_for_status()
+        create_result = response.json()
+    except Exception as e:
+        print(f"    错误: 创建 YesCaptcha Turnstile 任务失败 - {e}")
+        return None
+
+    if create_result.get("errorId") != 0:
+        print(f"    错误: YesCaptcha 创建任务失败 - {create_result.get('errorDescription') or create_result}")
+        return None
+
+    task_id = create_result.get("taskId")
+    if not task_id:
+        print("    错误: YesCaptcha 未返回 taskId")
+        return None
+
+    print(f"    Turnstile 任务已创建: {task_id}")
+    result_payload = {"clientKey": client_key, "taskId": task_id}
+
+    for attempt in range(30):
+        time.sleep(2 if attempt == 0 else 1.5)
+        try:
+            response = requests.post(
+                "https://api.yescaptcha.com/getTaskResult",
+                json=result_payload,
+                timeout=30,
+            )
+            response.raise_for_status()
+            task_result = response.json()
+        except Exception as e:
+            print(f"    错误: 获取 YesCaptcha 结果失败 - {e}")
+            continue
+
+        if task_result.get("errorId") != 0:
+            print(f"    错误: YesCaptcha 返回错误 - {task_result.get('errorDescription') or task_result}")
+            return None
+
+        status = task_result.get("status")
+        if status == "processing":
+            continue
+        if status != "ready":
+            continue
+
+        solution = task_result.get("solution") or {}
+        token = (
+            solution.get("token")
+            or solution.get("turnstileResponse")
+            or solution.get("gRecaptchaResponse")
+            or ""
+        ).strip()
+        if not token:
+            print(f"    错误: YesCaptcha 返回空 Turnstile token - {solution}")
+            return None
+
+        print(f"    Turnstile 识别成功! Token长度: {len(token)}")
+        return token
+
+    print("    错误: YesCaptcha Turnstile 识别超时")
+    return None
+
+
 def fetch_page_with_captcha(session: requests.Session, url: str) -> dict:
     """
-    获取页面并提取验证码
-
-    Args:
-        session: requests会话对象
-        url: 页面URL
-
-    Returns:
-        包含页面HTML和验证码信息的字典
+    获取页面并提取验证码信息 (包括图片验证码与 Turnstile Sitekey)
     """
     result = {
         "success": False,
         "html": None,
         "captcha_base64": None,
         "captcha_data_url": None,
+        "turnstile_sitekey": None,
     }
 
     print(f"[4] 请求注册页面...")
@@ -242,18 +369,23 @@ def fetch_page_with_captcha(session: requests.Session, url: str) -> dict:
     html_content = response.text
     print(f"    页面大小: {len(html_content)} 字节")
 
-    # 提取验证码
-    print(f"[5] 提取验证码...")
+    # 提取图片验证码
     pattern = r'data:image/svg\+xml;base64,([A-Za-z0-9+/=]+)'
     matches = re.findall(pattern, html_content)
-
     if matches:
         captcha_base64 = max(matches, key=len)
         result["captcha_base64"] = captcha_base64
         result["captcha_data_url"] = f"data:image/svg+xml;base64,{captcha_base64}"
-        print(f"    找到验证码 (base64长度: {len(captcha_base64)})")
-    else:
-        print("    警告: 未找到验证码图片")
+        print(f"    找到图片验证码 (base64长度: {len(captcha_base64)})")
+
+    # 提取 Turnstile Sitekey
+    sitekey = extract_turnstile_sitekey(html_content)
+    if sitekey:
+        result["turnstile_sitekey"] = sitekey
+        print(f"    找到 Turnstile SiteKey: {sitekey}")
+
+    if not matches and not sitekey:
+        print("    信息: 页面无需/未检测到验证码")
 
     result["html"] = html_content
     result["success"] = True
@@ -300,6 +432,7 @@ def recognize_captcha_with_yescaptcha(captcha_base64: str, config: dict) -> str 
             "type": "ImageToTextTask",
             "body": png_base64,
         },
+        "softID": YESCAPTCHA_SOFT_ID,
     }
 
     try:
@@ -1459,18 +1592,20 @@ def submit_signup_step1(
     session: requests.Session,
     signup_url: str,
     email: str,
-    captcha: str,
-    state: str,
+    captcha: str | None = None,
+    turnstile_token: str | None = None,
+    state: str = None,
     html: str = None,
 ) -> dict:
     """
-    提交注册第一步：邮箱和验证码
+    提交注册第一步：邮箱与验证码/Turnstile
 
     Args:
         session: requests会话对象
         signup_url: 注册页面URL
         email: 邮箱地址
-        captcha: 验证码
+        captcha: 图片验证码（可选）
+        turnstile_token: Cloudflare Turnstile token（可选）
         state: state参数
         html: 已获取的注册页面HTML（可选，用于提取表单字段）
 
@@ -1487,12 +1622,13 @@ def submit_signup_step1(
 
     print(f"\n[7] 提交注册表单...")
     print(f"    Email: {email}")
-    print(f"    Captcha: {captcha}")
+    if captcha:
+        print(f"    Captcha: {captcha}")
+    if turnstile_token:
+        print(f"    Turnstile Token: {turnstile_token[:30]}...")
 
-    # Auth0 的表单提交端点 - 使用完整URL包含state参数
     submit_url = signup_url
 
-    # 构建表单数据（仅从 primary form 提取隐藏字段，避免误用社交登录的 connection 等字段）
     if html is None:
         try:
             page_resp = session.get(signup_url, timeout=30)
@@ -1507,7 +1643,11 @@ def submit_signup_step1(
     form_data = dict(extracted)
     form_data["state"] = extracted.get("state") or state
     form_data["email"] = email
-    form_data["captcha"] = captcha
+    captcha_val = turnstile_token or captcha or ""
+    form_data["captcha"] = captcha_val
+    if turnstile_token:
+        form_data["cf-turnstile-response"] = turnstile_token
+        form_data["g-recaptcha-response"] = turnstile_token
     form_data["action"] = action_value
 
     # 设置表单提交的请求头
@@ -1676,6 +1816,7 @@ def signup(
     mail_jwt: str = None,
     keep_session: bool = False,
     *,
+    proxy: str = None,
     debug_init: bool = False,
 ) -> dict:
     """
@@ -1688,6 +1829,7 @@ def signup(
         max_retries: 验证码识别最大重试次数
         mail_api_base: 临时邮箱API基础地址（用于接收验证邮件）
         mail_jwt: 临时邮箱JWT令牌
+        proxy: HTTP 代理地址（可选）
 
     Returns:
         注册结果
@@ -1709,7 +1851,7 @@ def signup(
         print(f"注册尝试 {attempt + 1}/{max_retries}")
         print(f"{'='*60}")
 
-        session = create_session()
+        session = create_session(proxy=proxy)
         keep_open = False
         try:
 
@@ -1719,29 +1861,38 @@ def signup(
                 result["error"] = "获取注册页面失败"
                 continue
 
-            # Step 2: 获取页面和验证码
+            # Step 2: 获取页面和验证码/Turnstile
             page_info = fetch_page_with_captcha(session, signup_info["signup_url"])
             if not page_info["success"]:
-                result["error"] = "获取验证码失败"
+                result["error"] = "获取注册页面/验证码失败"
                 continue
 
-            if not page_info["captcha_base64"]:
-                result["error"] = "未找到验证码"
-                continue
+            # Step 3: 识别验证码 (Turnstile / 图片验证码)
+            captcha_text = None
+            turnstile_token = None
 
-            # Step 3: 识别验证码
-            captcha_text = recognize_captcha(page_info["captcha_base64"], config)
-            if not captcha_text:
-                result["error"] = "验证码识别失败"
-                continue
+            if page_info.get("turnstile_sitekey"):
+                turnstile_token = solve_turnstile_with_yescaptcha(
+                    page_info["turnstile_sitekey"], signup_info["signup_url"], config
+                )
+                if not turnstile_token:
+                    result["error"] = "Turnstile 验证码识别失败"
+                    continue
+
+            if page_info.get("captcha_base64"):
+                captcha_text = recognize_captcha(page_info["captcha_base64"], config)
+                if not captcha_text:
+                    result["error"] = "图片验证码识别失败"
+                    continue
 
             # Step 4: 提交注册表单
             submit_result = submit_signup_step1(
                 session,
                 signup_info["signup_url"],
                 email,
-                captcha_text,
-                signup_info["state"],
+                captcha=captcha_text,
+                turnstile_token=turnstile_token,
+                state=signup_info["state"],
                 html=page_info.get("html"),
             )
 

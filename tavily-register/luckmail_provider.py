@@ -6,13 +6,11 @@ from luckmail import LuckMailClient
 
 from config import (
     LUCKMAIL_API_KEY,
-    LUCKMAIL_API_SECRET,
     LUCKMAIL_BASE_URL,
     LUCKMAIL_DOMAIN,
     LUCKMAIL_EMAIL_TYPE,
     LUCKMAIL_POLL_INTERVAL,
     LUCKMAIL_PROJECT_CODE,
-    LUCKMAIL_USE_HMAC,
     MAX_EMAIL_WAIT_TIME,
 )
 from utils import extract_verification_link
@@ -32,8 +30,6 @@ class LuckMailProvider:
         self.client = LuckMailClient(
             base_url=LUCKMAIL_BASE_URL,
             api_key=LUCKMAIL_API_KEY,
-            api_secret=LUCKMAIL_API_SECRET or None,
-            use_hmac=LUCKMAIL_USE_HMAC,
         )
         self.order = None
         self.completed = False

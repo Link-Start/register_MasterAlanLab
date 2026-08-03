@@ -19,7 +19,10 @@ API_KEYS_FILE = str(Path(__file__).resolve().with_name("api_keys.txt"))
 MAX_EMAIL_WAIT_TIME = int(os.getenv("MAX_EMAIL_WAIT_TIME", "300"))
 
 # 临时邮箱 provider
-EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", "luckmail")
+EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", "outlook_tw")
+
+# 代理 API 配置
+PROXY_API_URL = os.getenv("PROXY_API_URL", "")
 
 # 浏览器配置
 HEADLESS = os.getenv("HEADLESS", "false").lower() in ("1", "true", "yes")
@@ -36,12 +39,6 @@ BIT_BROWSER_CLOSE_WAIT = max(5.0, float(os.getenv("BIT_BROWSER_CLOSE_WAIT", "5")
 # LuckMail 配置
 LUCKMAIL_BASE_URL = os.getenv("LUCKMAIL_BASE_URL", "https://mails.luckyous.com")
 LUCKMAIL_API_KEY = os.getenv("LUCKMAIL_API_KEY", "")
-LUCKMAIL_API_SECRET = os.getenv("LUCKMAIL_API_SECRET", "")
-LUCKMAIL_USE_HMAC = os.getenv("LUCKMAIL_USE_HMAC", "false").lower() in (
-    "1",
-    "true",
-    "yes",
-)
 LUCKMAIL_PROJECT_CODE = os.getenv("LUCKMAIL_PROJECT_CODE", "grok")
 LUCKMAIL_EMAIL_TYPE = os.getenv("LUCKMAIL_EMAIL_TYPE", "ms_graph")
 LUCKMAIL_DOMAIN = os.getenv("LUCKMAIL_DOMAIN", "outlook.com")

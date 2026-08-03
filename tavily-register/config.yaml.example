@@ -1,2 +1,13 @@
-# YesCaptcha 图片识别 key（ImageToTextTask）
+# YesCaptcha 识别 key
 YESCAPTCHA_CLIENT_KEY: YOUR_YESCAPTCHA_KEY
+
+# 代理 API 配置 (链接提取代理地址，每次返回纯文本 IP:PORT)
+# 代理模式下，每尝试注册 10 次(无论成功失败)会自动等待 8 分钟并重新提取新 IP，确保 IP 变动后继续
+PROXY_API_URL: "https://white.novproxy.com/white/api?region=US&num=1&time=8&format=1&type=txt"
+
+# 临时邮箱提供商: outlook_tw (默认, 无需 key) 或 luckmail
+EMAIL_PROVIDER: outlook_tw
+
+# LuckMail 配置 (使用 EMAIL_PROVIDER: luckmail 时可选配置)
+# LUCKMAIL_BASE_URL: https://mails.luckyous.com
+# LUCKMAIL_API_KEY: YOUR_LUCKMAIL_API_KEY

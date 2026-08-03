@@ -19,6 +19,9 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+.ruff_cache/
+.pytest_cache/
+.coverage
 
 # Virtual environments
 venv/
@@ -33,17 +36,24 @@ env/
 *.swo
 *~
 
-# Project specific
+# Sensitive configs and credentials
 config.yaml
 *.local.yaml
 *.secret.yaml
 .env
 .env.*
-email.txt
-*.log
+
+# Project runtime output & logs
 api_keys.txt
 failed.txt
+email.txt
+*.log
 run.log
+debug_*.html
+
+# Debug & Temporary files
+*.har
+scratch/
 
 # AI/Editor tools
 .zencoder/
