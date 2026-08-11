@@ -558,7 +558,7 @@ def retry_failed(
     failed_file: str = FAILED_FILE,
     output_file: str = OUTPUT_FILE,
     run_log_file: str = RUN_LOG_FILE,
-    password: str = PASSWORD,
+    password: str | None = None,
     interval: int = REGISTER_INTERVAL,
     verify_timeout: int = VERIFY_TIMEOUT,
     verify_poll_interval: float = VERIFY_POLL_INTERVAL,

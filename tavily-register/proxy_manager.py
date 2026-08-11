@@ -55,10 +55,35 @@ class ProxyManager:
         proxy_url = f"http://{proxy_str}"
         return proxy_url, raw_ip
 
+    def detect_exit_ip(self, proxy_url: str, timeout: float = 10.0) -> str:
+        """
+        通过代理发起 GET 请求到 http://ipinfo.io/json 检测实际出口 IP
+        """
+        proxies = {
+            "http": proxy_url,
+            "https": proxy_url,
+        }
+        headers = {
+            "User-Agent": "curl/7.68.0",
+            "Accept": "application/json",
+        }
+        resp = requests.get(
+            "http://ipinfo.io/json",
+            proxies=proxies,
+            headers=headers,
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        ip = str(data.get("ip", "")).strip()
+        if not ip:
+            raise ValueError(f"无法从 ipinfo.io 响应提取 IP: {resp.text[:100]}")
+        return ip
+
     def get_proxy(self) -> str | None:
         """
         获取当前可用代理地址。
-        若单 IP 已使用满 10 次，每隔 30 秒检测一次 IP，变动后立即开启下一次循环。
+        若单 IP 已使用满 10 次，每隔 30 秒检测一次实际出口 IP，变动后立即开启下一次循环。
         """
         if not self.proxy_api_url:
             return None
@@ -75,30 +100,39 @@ class ProxyManager:
             print()
             print("=" * 60)
             print(
-                f"当前代理 IP ({self.last_proxy_ip}) 已尝试注册满 {self.attempts_on_current_ip} 次。"
+                f"当前实际出口 IP ({self.last_proxy_ip}) 已尝试注册满 {self.attempts_on_current_ip} 次。"
             )
-            print(f"暂停注册，每隔 {int(self.poll_interval)} 秒检测 IP 是否发生变化...")
+            print(f"暂停注册，每隔 {int(self.poll_interval)} 秒检测实际出口 IP 是否发生变化...")
             print("=" * 60)
 
-        # 轮询获取新 IP，确认与上一轮 IP 不同
+        # 轮询获取新 IP，并通过 ipinfo.io 确认实际出口 IP 与上一轮不同
         while True:
             try:
                 proxy_url, raw_ip = self.fetch_proxy_from_api()
-                if self.last_proxy_ip and raw_ip == self.last_proxy_ip:
+                print(
+                    f"  📡 提取到代理平台地址: {proxy_url}，正在通过 ipinfo.io 检测实际出口 IP..."
+                )
+                exit_ip = self.detect_exit_ip(proxy_url)
+
+                if self.last_proxy_ip and exit_ip == self.last_proxy_ip:
                     print(
-                        f"  ⏳ 提取到的 IP ({raw_ip}) 与上一轮相同，未发生变化，等待 {int(self.poll_interval)} 秒后重新检测..."
+                        f"  ⏳ 检测到的实际出口 IP ({exit_ip}) 与上一轮相同，未发生变化，等待 {int(self.poll_interval)} 秒后重新检测..."
                     )
                     time.sleep(self.poll_interval)
                     continue
 
                 self.current_proxy_url = proxy_url
-                self.last_proxy_ip = raw_ip
+                self.last_proxy_ip = exit_ip
                 self.proxy_fetched_at = time.time()
                 self.attempts_on_current_ip = 0
-                print(f"  ✅ 成功检测到新代理 IP 变化: {raw_ip} (代理地址: {proxy_url})，开始新一轮注册！")
+                print(
+                    f"  ✅ 成功检测到实际出口 IP 变化: {exit_ip} (代理平台地址: {proxy_url})，开始新一轮注册！"
+                )
                 return self.current_proxy_url
             except Exception as e:
-                print(f"  ❌ 提取代理 API 失败: {e}，等待 {int(self.poll_interval)} 秒后重试...")
+                print(
+                    f"  ❌ 提取代理或检测实际出口 IP 失败: {e}，等待 {int(self.poll_interval)} 秒后重试..."
+                )
                 time.sleep(self.poll_interval)
 
     def record_attempt(self) -> None:
@@ -106,5 +140,5 @@ class ProxyManager:
         if self.proxy_api_url and self.current_proxy_url:
             self.attempts_on_current_ip += 1
             print(
-                f"  [代理统计] 当前 IP ({self.last_proxy_ip}) 已尝试注册 {self.attempts_on_current_ip}/{self.max_attempts_per_ip} 次"
+                f"  [代理统计] 当前出口 IP ({self.last_proxy_ip}) 已尝试注册 {self.attempts_on_current_ip}/{self.max_attempts_per_ip} 次"
             )
