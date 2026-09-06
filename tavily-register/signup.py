@@ -16,6 +16,13 @@ from datetime import datetime
 import time
 from email import message_from_string
 
+from retry_policy import (
+    ProxyRotationRequired,
+    RetryControlSignal,
+    RetrySession,
+    external_request_with_retry,
+)
+
 # SVG to PNG conversion (svglib)
 try:
     from svglib.svglib import svg2rlg
@@ -89,7 +96,13 @@ except ImportError:
     HAS_CURL_CFFI = False
 
 
-def create_session(proxy: str | None = None):
+def create_session(
+    proxy: str | None = None,
+    *,
+    proxy_manager=None,
+    request_max_attempts: int = 3,
+    request_retry_delay: float = 2.0,
+):
     """
     创建配置好的请求会话 (优先使用 curl_cffi 模拟真实浏览器 TLS 握手)
     """
@@ -106,7 +119,12 @@ def create_session(proxy: str | None = None):
         })
         if proxies:
             session.proxies = proxies
-        return session
+        return RetrySession(
+            session,
+            proxy_manager=proxy_manager,
+            max_attempts=request_max_attempts,
+            retry_delay=request_retry_delay,
+        )
 
     session = requests.Session()
     session.headers.update({
@@ -116,7 +134,12 @@ def create_session(proxy: str | None = None):
     })
     if proxies:
         session.proxies = proxies
-    return session
+    return RetrySession(
+        session,
+        proxy_manager=proxy_manager,
+        max_attempts=request_max_attempts,
+        retry_delay=request_retry_delay,
+    )
 
 
 def svg_to_png_base64(svg_base64: str) -> str | None:
@@ -282,8 +305,10 @@ def solve_turnstile_with_yescaptcha(sitekey: str, page_url: str, config: dict) -
     }
 
     try:
-        response = requests.post(
+        response = external_request_with_retry(
+            requests.post,
             "https://api.yescaptcha.com/createTask",
+            node="POST yescaptcha.com/createTask",
             json=create_payload,
             timeout=30,
         )
@@ -308,8 +333,10 @@ def solve_turnstile_with_yescaptcha(sitekey: str, page_url: str, config: dict) -
     for attempt in range(30):
         time.sleep(2 if attempt == 0 else 1.5)
         try:
-            response = requests.post(
+            response = external_request_with_retry(
+                requests.post,
                 "https://api.yescaptcha.com/getTaskResult",
+                node="POST yescaptcha.com/getTaskResult",
                 json=result_payload,
                 timeout=30,
             )
@@ -436,8 +463,10 @@ def recognize_captcha_with_yescaptcha(captcha_base64: str, config: dict) -> str 
     }
 
     try:
-        response = requests.post(
+        response = external_request_with_retry(
+            requests.post,
             "https://api.yescaptcha.com/createTask",
+            node="POST yescaptcha.com/createTask",
             json=create_payload,
             timeout=30,
         )
@@ -469,8 +498,10 @@ def recognize_captcha_with_yescaptcha(captcha_base64: str, config: dict) -> str 
     for attempt in range(24):
         time.sleep(2 if attempt == 0 else 1.5)
         try:
-            response = requests.post(
+            response = external_request_with_retry(
+                requests.post,
                 "https://api.yescaptcha.com/getTaskResult",
+                node="POST yescaptcha.com/getTaskResult",
                 json=result_payload,
                 timeout=30,
             )
@@ -537,7 +568,13 @@ def fetch_emails_from_temp_mail(mail_api_base: str, jwt: str, limit: int = 10, o
     }
 
     try:
-        response = requests.get(url, headers=headers, timeout=30)
+        response = external_request_with_retry(
+            requests.get,
+            url,
+            node="GET mail provider API",
+            headers=headers,
+            timeout=30,
+        )
         response.raise_for_status()
         data = response.json()
         return data.get("results", [])
@@ -660,7 +697,13 @@ def wait_for_verification_email(mail_api_base: str, jwt: str, timeout: int = 120
     return None
 
 
-def verify_email(session: requests.Session, verification_link: str) -> dict:
+def verify_email(
+    session: requests.Session,
+    verification_link: str,
+    *,
+    request_max_attempts: int = 3,
+    request_retry_delay: float = 2.0,
+) -> dict:
     """
     使用注册时的session访问验证链接完成邮箱验证
 
@@ -680,8 +723,18 @@ def verify_email(session: requests.Session, verification_link: str) -> dict:
     print(f"\n[10] 访问验证链接...")
 
     try:
+        # 兼容外部直接传入原始 requests/curl_cffi Session 的调用方；主流程
+        # 会在 create_session 中提前注入带 IP 计数的 RetrySession。
+        if not isinstance(session, RetrySession):
+            session = RetrySession(
+                session,
+                max_attempts=max(1, int(request_max_attempts)),
+                retry_delay=request_retry_delay,
+            )
         # 使用注册时的 session 访问验证链接（通常会先 GET 一次拿到 state，再 POST 提交表单，302 跳转）
-        response = session.get(verification_link, allow_redirects=True, timeout=30)
+        response = session.get(
+            verification_link, allow_redirects=True, timeout=30
+        )
         print(f"    状态码: {response.status_code}")
         print(f"    URL: {response.url[:60]}...")
 
@@ -750,13 +803,23 @@ def verify_email(session: requests.Session, verification_link: str) -> dict:
             }
 
             print(f"    发现确认表单，提交 state... (期望 302)")
-            post_resp = session.post(form_url, data=form_data, headers=headers, allow_redirects=False, timeout=30)
+            post_resp = session.post(
+                form_url,
+                data=form_data,
+                headers=headers,
+                allow_redirects=False,
+                timeout=30,
+            )
             print(f"    表单提交状态: {post_resp.status_code}")
 
             # 手动跟随 302，便于观察跳转链路（requests 自动跟随也会工作，但这里更可控）
             if post_resp.status_code in (301, 302, 303, 307, 308) and post_resp.headers.get("Location"):
                 next_url = urljoin(form_url, post_resp.headers["Location"])
-                response = session.get(next_url, allow_redirects=True, timeout=30)
+                # 这里最容易遇到 auth0 跳转链路上的短暂 TLS 断连。
+                # 只重试当前 GET，不重新注册账号，也不重复获取验证邮件。
+                response = session.get(
+                    next_url, allow_redirects=True, timeout=30
+                )
                 print(f"    跳转后状态: {response.status_code}")
                 print(f"    跳转后URL: {response.url[:60]}...")
                 result["final_url"] = response.url
@@ -784,9 +847,11 @@ def verify_email(session: requests.Session, verification_link: str) -> dict:
                 result["success"] = True
                 print(f"    验证请求已完成")
 
-    except requests.exceptions.RequestException as e:
+    except ProxyRotationRequired:
+        raise
+    except Exception as e:
         result["error"] = str(e)
-        print(f"    验证请求错误: {e}")
+        print(f"    验证请求失败: {e}")
 
     return result
 
@@ -987,6 +1052,8 @@ def login_after_verification(session: requests.Session, email: str, password: st
     except requests.exceptions.RequestException as e:
         result["error"] = f"请求异常: {e}"
         print(f"    {result['error']}")
+    except RetryControlSignal:
+        raise
     except Exception as e:
         result["error"] = f"未知错误: {e}"
         print(f"    {result['error']}")
@@ -1168,6 +1235,8 @@ def run_first_login_init(session: requests.Session, *, debug: bool = False) -> d
         result["is_new_user"] = _is_new_user(payload) if payload is not None else None
         result["has_seen_marketing_popup"] = _extract_bool(payload, "has_seen_marketing_popup")
         result["marketing_opt_in"] = _extract_bool(payload, "marketing_opt_in")
+    except RetryControlSignal:
+        raise
     except Exception as e:
         result["errors"].append(f"/api/account error: {e}")
 
@@ -1196,6 +1265,8 @@ def run_first_login_init(session: requests.Session, *, debug: bool = False) -> d
             )
             if debug:
                 print(f"    [init] PUT /api/hasSeenTour: {put_resp.status_code}")
+    except RetryControlSignal:
+        raise
     except Exception as e:
         result["errors"].append(f"/api/hasSeenTour error: {e}")
 
@@ -1222,6 +1293,8 @@ def run_first_login_init(session: requests.Session, *, debug: bool = False) -> d
             )
             if debug:
                 print(f"    [init] /api/marketing-optin: {resp.status_code}")
+    except RetryControlSignal:
+        raise
     except Exception as e:
         result["errors"].append(f"/api/marketing-optin error: {e}")
 
@@ -1312,33 +1385,45 @@ def get_api_keys(
         print("    预热 session...")
         try:
             session.get("https://app.tavily.com/home", timeout=30)
+        except RetryControlSignal:
+            raise
         except Exception:
             pass
 
         # 新账号首次登录往往需要走新手引导/弹窗相关接口，才能触发后端初始化（默认 key 生成等）。
         try:
             run_first_login_init(session, debug=debug_init)
+        except RetryControlSignal:
+            raise
         except Exception:
             pass
 
         # Observed in browser network when opening /home.
         try:
             session.post("https://app.tavily.com/api/tavily_services", json={"action": "get-stripe-accounts"}, timeout=30)
+        except RetryControlSignal:
+            raise
         except Exception:
             pass
 
         try:
             session.post("https://app.tavily.com/api/billing/has-valid-payment", json={}, timeout=30)
+        except RetryControlSignal:
+            raise
         except Exception:
             pass
 
         try:
             session.post("https://app.tavily.com/api/billing/status", json={}, timeout=30)
+        except RetryControlSignal:
+            raise
         except Exception:
             pass
 
         try:
             session.get("https://app.tavily.com/api/billing/address", timeout=30)
+        except RetryControlSignal:
+            raise
         except Exception:
             pass
 
@@ -1633,6 +1718,8 @@ def submit_signup_step1(
         try:
             page_resp = session.get(signup_url, timeout=30)
             html = page_resp.text if page_resp.status_code == 200 else None
+        except RetryControlSignal:
+            raise
         except Exception:
             html = None
 
@@ -1817,6 +1904,7 @@ def signup(
     keep_session: bool = False,
     *,
     proxy: str = None,
+    proxy_manager=None,
     debug_init: bool = False,
 ) -> dict:
     """
@@ -1851,7 +1939,7 @@ def signup(
         print(f"注册尝试 {attempt + 1}/{max_retries}")
         print(f"{'='*60}")
 
-        session = create_session(proxy=proxy)
+        session = create_session(proxy=proxy, proxy_manager=proxy_manager)
         keep_open = False
         try:
 
@@ -1941,6 +2029,8 @@ def signup(
                                             )
                                             if "app.tavily.com" in (resp.url or ""):
                                                 already_logged_in = True
+                                        except RetryControlSignal:
+                                            raise
                                         except Exception:
                                             pass
 
@@ -1948,6 +2038,8 @@ def signup(
                                     try:
                                         resp = session.get("https://app.tavily.com/api/auth/me", timeout=30)
                                         session_valid = resp.status_code == 200
+                                    except RetryControlSignal:
+                                        raise
                                     except Exception:
                                         session_valid = False
 
@@ -2056,5 +2148,3 @@ def signup(
                     pass
 
     return result
-
-

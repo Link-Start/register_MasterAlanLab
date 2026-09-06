@@ -6,12 +6,15 @@ import re
 import time
 import requests
 
+from retry_policy import external_request_with_retry
+
 
 class ProxyManager:
     """
     代理 IP 管理类：
     - 支持通过 PROXY_API_URL 提取代理 IP (文本格式, 如 1.2.3.4:8080)
     - 针对单个 IP 限制最多 10 次注册尝试
+    - 任意注册节点累计 3 次网络失败后立即轮换 IP
     - 达到 10 次注册尝试后，每隔 30 秒轮询获取一次代理 IP
     - 检测到代理 IP 发生变化后，立即再次开启新一轮注册（最多 10 次），直到设定的总注册数量完成
     """
@@ -20,16 +23,45 @@ class ProxyManager:
         self,
         proxy_api_url: str | None = None,
         max_attempts_per_ip: int = 10,
+        max_network_failures_per_ip: int = 3,
         poll_interval: float = 30.0,  # 30 秒轮询一次
     ):
         self.proxy_api_url = (proxy_api_url or "").strip()
         self.max_attempts_per_ip = max_attempts_per_ip
+        self.max_network_failures_per_ip = max(
+            1, int(max_network_failures_per_ip)
+        )
         self.poll_interval = poll_interval
 
         self.current_proxy_url: str | None = None
         self.last_proxy_ip: str | None = None
         self.proxy_fetched_at: float | None = None
         self.attempts_on_current_ip: int = 0
+        self.network_failures_on_current_ip: int = 0
+        self.rotation_requested: bool = False
+        self.rotation_reason: str | None = None
+
+    def record_network_failure(self, node: str, error: Exception) -> bool:
+        """累计当前出口 IP 的传输层失败；成功请求不会清零此计数。"""
+        self.network_failures_on_current_ip += 1
+        print(
+            f"    [IP 网络失败] 出口 IP ({self.last_proxy_ip or '直连'}) "
+            f"累计 {self.network_failures_on_current_ip}/"
+            f"{self.max_network_failures_per_ip}；节点: {node}；错误: {error}"
+        )
+        return (
+            self.network_failures_on_current_ip
+            >= self.max_network_failures_per_ip
+        )
+
+    def request_rotation(self, reason: str) -> None:
+        """标记当前代理在下一次 get_proxy 时必须轮换。"""
+        self.rotation_requested = True
+        self.rotation_reason = reason
+
+    def force_rotate(self, reason: str) -> None:
+        """业务层明确发现 IP 限制时强制轮换。"""
+        self.request_rotation(reason)
 
     def fetch_proxy_from_api(self) -> tuple[str, str]:
         """
@@ -41,7 +73,12 @@ class ProxyManager:
         if not self.proxy_api_url:
             raise ValueError("未配置 PROXY_API_URL")
 
-        resp = requests.get(self.proxy_api_url, timeout=15)
+        resp = external_request_with_retry(
+            requests.get,
+            self.proxy_api_url,
+            node="GET proxy API",
+            timeout=15,
+        )
         resp.raise_for_status()
         text = resp.text.strip()
 
@@ -67,8 +104,10 @@ class ProxyManager:
             "User-Agent": "curl/7.68.0",
             "Accept": "application/json",
         }
-        resp = requests.get(
+        resp = external_request_with_retry(
+            requests.get,
             "http://ipinfo.io/json",
+            node="GET ipinfo.io/json",
             proxies=proxies,
             headers=headers,
             timeout=timeout,
@@ -91,6 +130,7 @@ class ProxyManager:
         need_new_ip = (
             self.current_proxy_url is None
             or self.attempts_on_current_ip >= self.max_attempts_per_ip
+            or self.rotation_requested
         )
 
         if not need_new_ip:
@@ -99,9 +139,16 @@ class ProxyManager:
         if self.current_proxy_url is not None:
             print()
             print("=" * 60)
-            print(
-                f"当前实际出口 IP ({self.last_proxy_ip}) 已尝试注册满 {self.attempts_on_current_ip} 次。"
-            )
+            if self.rotation_requested:
+                print(
+                    f"废弃当前实际出口 IP ({self.last_proxy_ip})："
+                    f"{self.rotation_reason or '已请求轮换'}。"
+                )
+            else:
+                print(
+                    f"当前实际出口 IP ({self.last_proxy_ip}) 已尝试注册满 "
+                    f"{self.attempts_on_current_ip} 次。"
+                )
             print(f"暂停注册，每隔 {int(self.poll_interval)} 秒检测实际出口 IP 是否发生变化...")
             print("=" * 60)
 
@@ -125,6 +172,9 @@ class ProxyManager:
                 self.last_proxy_ip = exit_ip
                 self.proxy_fetched_at = time.time()
                 self.attempts_on_current_ip = 0
+                self.network_failures_on_current_ip = 0
+                self.rotation_requested = False
+                self.rotation_reason = None
                 print(
                     f"  ✅ 成功检测到实际出口 IP 变化: {exit_ip} (代理平台地址: {proxy_url})，开始新一轮注册！"
                 )

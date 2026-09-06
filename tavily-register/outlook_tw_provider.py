@@ -30,6 +30,7 @@ class OutlookTwProvider:
         self.email = None
         self.expires_at = None
         self.completed = False
+        self.verification_link = None
 
     @staticmethod
     def _create_session():
@@ -87,6 +88,8 @@ class OutlookTwProvider:
     def wait_for_verification_link(self) -> str:
         if not self.email:
             raise OutlookTwProviderError("尚未生成 outlook.tw 邮箱")
+        if self.verification_link:
+            return self.verification_link
 
         deadline = time.monotonic() + MAX_EMAIL_WAIT_TIME
         last_error = None
@@ -103,6 +106,7 @@ class OutlookTwProvider:
                     link = self._extract_link_from_message(message)
                     if link:
                         self.completed = True
+                        self.verification_link = link
                         return link
 
                     message_id = message.get("id")
@@ -114,6 +118,7 @@ class OutlookTwProvider:
                     link = self._extract_link_from_message(detail)
                     if link:
                         self.completed = True
+                        self.verification_link = link
                         return link
                 last_error = None
             except (requests.RequestsError, ValueError, OutlookTwProviderError) as exc:

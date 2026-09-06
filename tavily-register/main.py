@@ -11,6 +11,7 @@ from typing import Iterable
 
 from mail_provider import create_mail_provider
 from proxy_manager import ProxyManager
+from retry_policy import NetworkNodeFailed, ProxyRotationRequired
 from signup import (
     create_session,
     create_api_key,
@@ -104,7 +105,13 @@ def load_email_list(file_path: str) -> list[str]:
 
 
 def try_login_get_key(
-    email: str, password: str, config: dict, *, proxy: str = None, debug_init: bool = False
+    email: str,
+    password: str,
+    config: dict,
+    *,
+    proxy: str = None,
+    proxy_manager=None,
+    debug_init: bool = False,
 ) -> str:
     """
     尝试登录已注册账户并获取API Key
@@ -116,13 +123,7 @@ def try_login_get_key(
     max_login_attempts = 5
     session = None
     for attempt in range(max_login_attempts):
-        if session is not None:
-            try:
-                session.close()
-            except Exception:
-                pass
-
-        session = create_session(proxy=proxy)
+        session = create_session(proxy=proxy, proxy_manager=proxy_manager)
         try:
             login_result = login_after_verification(
                 session, email, password, config
@@ -154,16 +155,21 @@ def try_login_get_key(
                 print(
                     f"    登录失败 (attempt {attempt+1}/{max_login_attempts}): {login_result.get('error')}"
                 )
+        except ProxyRotationRequired:
+            raise
+        except NetworkNodeFailed:
+            raise
         except Exception as e:
             print(f"    登录尝试 {attempt+1} 异常: {e}")
+        finally:
+            if session is not None:
+                try:
+                    session.close()
+                except Exception:
+                    pass
+                session = None
 
         time.sleep(2)
-
-    if session is not None:
-        try:
-            session.close()
-        except Exception:
-            pass
 
     return None
 
@@ -176,27 +182,33 @@ def _verify_email_and_get_key(
     *,
     session=None,
     proxy: str = None,
+    proxy_manager=None,
+    workflow_state: dict | None = None,
     debug_init: bool = False,
 ) -> str | None:
+    workflow_state = workflow_state if workflow_state is not None else {}
     print("    等待验证邮件...")
     if getattr(provider, "email", None) != email:
         provider.email = email
-    link = provider.wait_for_verification_link()
+    link = workflow_state.get("verification_link") or provider.wait_for_verification_link()
     if not link:
         print("    超时: 未收到验证邮件")
         return None
 
     print(f"    获取到验证链接: {link[:60]}...")
+    workflow_state["verification_link"] = link
 
     close_session = False
     if session is None:
-        session = create_session(proxy=proxy)
+        session = create_session(proxy=proxy, proxy_manager=proxy_manager)
         close_session = True
     try:
-        verify_result = verify_email(session, link)
-        if not verify_result.get("success"):
-            print(f"    邮箱验证失败: {verify_result.get('error')}")
-            return None
+        if not workflow_state.get("email_verified"):
+            verify_result = verify_email(session, link)
+            if not verify_result.get("success"):
+                print(f"    邮箱验证失败: {verify_result.get('error')}")
+                return None
+            workflow_state["email_verified"] = True
 
         try:
             resp = session.get(
@@ -206,6 +218,10 @@ def _verify_email_and_get_key(
             )
             if "app.tavily.com" in (resp.url or ""):
                 print("    已进入应用(登录态已建立)")
+        except ProxyRotationRequired:
+            raise
+        except NetworkNodeFailed:
+            raise
         except Exception:
             pass
 
@@ -219,13 +235,22 @@ def _verify_email_and_get_key(
                 print(
                     f"    Session 无效 (status={resp.status_code})，需要重新登录"
                 )
+        except ProxyRotationRequired:
+            raise
+        except NetworkNodeFailed:
+            raise
         except Exception as e:
             print(f"    检查 session 失败: {e}")
 
         if not session_valid:
             print("    验证完成但未建立登录态，尝试登录...")
             return try_login_get_key(
-                email, password, config, proxy=proxy, debug_init=debug_init
+                email,
+                password,
+                config,
+                proxy=proxy,
+                proxy_manager=proxy_manager,
+                debug_init=debug_init,
             )
 
         keys_result = get_api_keys(
@@ -242,12 +267,21 @@ def _verify_email_and_get_key(
                 api_key = _extract_first_api_key(create_result["key"])
                 if api_key:
                     return api_key
+        except ProxyRotationRequired:
+            raise
+        except NetworkNodeFailed:
+            raise
         except Exception:
             pass
 
         print("    已登录但未获取到 key，尝试重新登录...")
         return try_login_get_key(
-            email, password, config, proxy=proxy, debug_init=debug_init
+            email,
+            password,
+            config,
+            proxy=proxy,
+            proxy_manager=proxy_manager,
+            debug_init=debug_init,
         )
     finally:
         if close_session:
@@ -284,6 +318,7 @@ def batch_signup(
     proxy_mgr = ProxyManager(
         proxy_api_url=proxy_api_url,
         max_attempts_per_ip=10,
+        max_network_failures_per_ip=3,
         poll_interval=30.0,
     )
 
@@ -305,7 +340,10 @@ def batch_signup(
     print(f"注册间隔: {interval} 秒")
     if proxy_api_url:
         print(f"代理 API: {proxy_api_url}")
-        print("代理模式: 单 IP 最多 10 次注册尝试，达到后每 30 秒检测新 IP 变动并自动开启下一轮，直到设定的目标数量全部注册完成")
+        print(
+            "代理模式: 单 IP 最多 10 次注册尝试，累计 3 次网络失败立即轮换；"
+            "达到任一阈值后检测新 IP，并继续当前账号"
+        )
     else:
         print(
             f"时间窗口限制: 单 IP 每 {registration_window_seconds/60:.1f} 分钟最多注册 {max_registrations_per_window} 个"
@@ -369,160 +407,195 @@ def batch_signup(
         current_proxy = proxy_mgr.get_proxy()
         item_password = password if password else generate_password(14)
         completed_this_item = False
-        while True:
-            provider = None
+
+        # 邮箱、密码和验证链接属于当前账号。换 IP 时只重建 Tavily Session。
+        provider = None
+        email = None
+        if emails is None:
+            while True:
+                try:
+                    provider = create_mail_provider()
+                    email = provider.acquire_email()
+                except (ValueError, RuntimeError) as e:
+                    err = f"email_generate_failed: {e}"
+                    print(f"\n{'='*60}")
+                    print(f"[{i+1}/{total}] (生成邮箱失败)")
+                    print(f"{'='*60}")
+                    print(err)
+                    save_failed(failed_file, "N/A", err)
+                    failed_count += 1
+                    proxy_mgr.record_attempt()
+                    provider = None
+                    break
+                if email not in registered_emails:
+                    break
+                print(f"跳过: 已注册邮箱 {email}，重新生成")
+                skipped_count += 1
+                proxy_mgr.record_attempt()
+                try:
+                    provider.close()
+                except Exception:
+                    pass
+                provider = None
+        else:
             try:
                 provider = create_mail_provider()
-                if emails is None:
-                    try:
-                        email = provider.acquire_email()
-                    except (ValueError, RuntimeError) as e:
-                        err = f"email_generate_failed: {e}"
-                        print(f"\n{'='*60}")
-                        print(f"[{i+1}/{total}] (生成邮箱失败)")
-                        print(f"{'='*60}")
-                        print(err)
-                        save_failed(failed_file, "N/A", err)
-                        failed_count += 1
-                        proxy_mgr.record_attempt()
-                        break
-                else:
-                    email = email_list[i]
-                    provider.email = email
+                email = email_list[i]
+                provider.email = email
+            except Exception as e:
+                save_failed(failed_file, "N/A", f"email_provider_failed: {e}")
+                failed_count += 1
+                proxy_mgr.record_attempt()
 
-                print(f"\n{'='*60}")
-                print(f"[{i+1}/{total}] {email}")
-                print(f"密码: {item_password}")
-                print(f"{'='*60}")
-                append_run_log(run_log_file, f"开始处理 [{i+1}/{total}] {email}")
+        if provider is not None and email in registered_emails:
+            print("跳过: 已注册")
+            skipped_count += 1
+            proxy_mgr.record_attempt()
+            try:
+                provider.close()
+            except Exception:
+                pass
+            provider = None
 
-                if email in registered_emails:
-                    print("跳过: 已注册")
-                    skipped_count += 1
-                    proxy_mgr.record_attempt()
-                    if emails is None:
-                        continue
-                    break
+        if provider is not None:
+            print(f"\n{'='*60}")
+            print(f"[{i+1}/{total}] {email}")
+            print(f"密码: {item_password}")
+            print(f"{'='*60}")
+            append_run_log(run_log_file, f"开始处理 [{i+1}/{total}] {email}")
 
+            workflow_state = {
+                "verification_link": None,
+                "email_verified": False,
+            }
+            signup_completed = False
+            signup_session = None
+            terminal_error = None
+
+            while True:
                 try:
-                    result = signup(
-                        email=email,
-                        password=item_password,
-                        config=config,
-                        max_retries=3,
-                        mail_api_base=None,
-                        mail_jwt=None,
-                        keep_session=True,
-                        proxy=current_proxy,
-                        debug_init=debug_init,
-                    )
-
-                    signup_session = result.get("session")
-                    try:
-                        if result.get("success") and result.get("api_keys"):
-                            api_key = _extract_first_api_key(
-                                result.get("api_keys")
-                            )
-                            if api_key:
-                                save_result(output_file, email, api_key)
-                                print(
-                                    f"\n成功! API Key: {api_key[:15]}...{api_key[-4:]}"
-                                )
-                                append_run_log(
-                                    run_log_file, f"注册成功 {email}"
-                                )
-                                success_count += 1
-                                completed_this_item = True
-                                proxy_mgr.record_attempt()
-                                break
+                    if not signup_completed:
+                        result = signup(
+                            email=email,
+                            password=item_password,
+                            config=config,
+                            max_retries=3,
+                            mail_api_base=None,
+                            mail_jwt=None,
+                            keep_session=True,
+                            proxy=current_proxy,
+                            proxy_manager=proxy_mgr,
+                            debug_init=debug_init,
+                        )
+                        signup_session = result.get("session")
 
                         if result.get("success"):
-                            api_key = _verify_email_and_get_key(
-                                provider,
-                                email,
-                                item_password,
-                                config,
-                                session=signup_session,
-                                proxy=current_proxy,
-                                debug_init=debug_init,
-                            )
-                            if api_key:
-                                save_result(output_file, email, api_key)
-                                print(
-                                    f"\n成功! API Key: {api_key[:15]}...{api_key[-4:]}"
-                                )
-                                append_run_log(
-                                    run_log_file, f"注册成功 {email}"
-                                )
-                                success_count += 1
-                                completed_this_item = True
+                            signup_completed = True
+                        else:
+                            error = result.get("error", "unknown")
+                            print(f"\n注册失败: {error}")
+                            # 请求已成功但邮箱已存在时，转入验证/登录恢复流程。
+                            if isinstance(error, str) and "邮箱已注册" in error:
+                                signup_completed = True
+                            elif isinstance(error, str) and "ip-signup-blocked" in error:
+                                if not proxy_mgr.proxy_api_url:
+                                    terminal_error = error
+                                    break
+                                proxy_mgr.record_attempt()
+                                proxy_mgr.force_rotate("Tavily 返回 ip-signup-blocked")
+                                current_proxy = proxy_mgr.get_proxy()
+                                continue
                             else:
-                                save_failed(
-                                    failed_file,
+                                api_key = try_login_get_key(
                                     email,
-                                    f"no_api_key_after_verify_step_{result.get('step')}",
+                                    item_password,
+                                    config,
+                                    proxy=current_proxy,
+                                    proxy_manager=proxy_mgr,
+                                    debug_init=debug_init,
                                 )
-                                print("\n注册完成但未获取到 API Key")
-                                append_run_log(
-                                    run_log_file,
-                                    f"注册失败 {email} - 验证后未拿到 API Key",
-                                )
-                                failed_count += 1
-                            proxy_mgr.record_attempt()
+                                if api_key:
+                                    save_result(output_file, email, api_key)
+                                    print(f"\n通过登录获取成功! API Key: {api_key[:15]}...{api_key[-4:]}")
+                                    append_run_log(run_log_file, f"登录补救成功 {email}")
+                                    success_count += 1
+                                    completed_this_item = True
+                                else:
+                                    terminal_error = error
+                                break
+
+                    if signup_completed and result.get("api_keys"):
+                        api_key = _extract_first_api_key(result.get("api_keys"))
+                        if api_key:
+                            save_result(output_file, email, api_key)
+                            print(f"\n成功! API Key: {api_key[:15]}...{api_key[-4:]}")
+                            append_run_log(run_log_file, f"注册成功 {email}")
+                            success_count += 1
+                            completed_this_item = True
                             break
 
-                        error = result.get("error", "unknown")
-                        print(f"\n注册失败: {error}")
-
-                        if isinstance(error, str) and "ip-signup-blocked" in error:
-                            save_failed(failed_file, email, error)
-                            print(
-                                "\n检测到 ip-signup-blocked：当前 IP 已被禁止。"
-                            )
-                            proxy_mgr.record_attempt()
-                            if not proxy_mgr.proxy_api_url:
-                                print("未配置代理 API，终止批量注册。")
-                                return
-
-                        api_key = try_login_get_key(
-                            email, item_password, config, proxy=current_proxy, debug_init=debug_init
+                    if signup_completed:
+                        api_key = _verify_email_and_get_key(
+                            provider,
+                            email,
+                            item_password,
+                            config,
+                            session=signup_session,
+                            proxy=current_proxy,
+                            proxy_manager=proxy_mgr,
+                            workflow_state=workflow_state,
+                            debug_init=debug_init,
                         )
                         if api_key:
                             save_result(output_file, email, api_key)
-                            print(
-                                f"\n通过登录获取成功! API Key: {api_key[:15]}...{api_key[-4:]}"
-                            )
-                            append_run_log(
-                                run_log_file, f"登录补救成功 {email}"
-                            )
+                            print(f"\n成功! API Key: {api_key[:15]}...{api_key[-4:]}")
+                            append_run_log(run_log_file, f"注册成功 {email}")
                             success_count += 1
                             completed_this_item = True
                         else:
-                            save_failed(failed_file, email, error)
-                            print(f"\n最终失败: {error}")
-                            failed_count += 1
-                        proxy_mgr.record_attempt()
+                            terminal_error = "no_api_key_after_verify"
                         break
-                    finally:
-                        if signup_session is not None:
-                            try:
-                                signup_session.close()
-                            except Exception:
-                                pass
 
-                except Exception as e:
-                    save_failed(failed_file, email, str(e))
-                    print(f"\n异常: {e}")
-                    append_run_log(run_log_file, f"注册异常 {email} - {e}")
-                    failed_count += 1
+                except ProxyRotationRequired as e:
+                    # 只关闭受影响的 Session；邮箱、密码、验证链接和流程状态保留。
+                    if signup_session is not None:
+                        try:
+                            signup_session.close()
+                        except Exception:
+                            pass
+                        signup_session = None
                     proxy_mgr.record_attempt()
+                    print(f"\n当前 IP 需要轮换: {e.reason}")
+                    current_proxy = proxy_mgr.get_proxy()
+                    print(f"使用新 IP 继续当前账号: {email}")
+                    continue
+                except NetworkNodeFailed as e:
+                    terminal_error = str(e)
                     break
-            finally:
-                if provider is not None:
-                    try:
-                        provider.close()
-                    except Exception:
-                        pass
+                except Exception as e:
+                    terminal_error = str(e)
+                    print(f"\n异常: {e}")
+                    break
+                finally:
+                    if signup_session is not None and (completed_this_item or terminal_error):
+                        try:
+                            signup_session.close()
+                        except Exception:
+                            pass
+                        signup_session = None
+
+            if terminal_error and not completed_this_item:
+                save_failed(failed_file, email, terminal_error)
+                print(f"\n最终失败: {terminal_error}")
+                append_run_log(run_log_file, f"注册失败 {email} - {terminal_error}")
+                failed_count += 1
+            proxy_mgr.record_attempt()
+
+        if provider is not None:
+            try:
+                provider.close()
+            except Exception:
+                pass
 
         if completed_this_item:
             window_completed += 1
@@ -625,7 +698,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--proxy-api-url",
         default=None,
-        help="代理提取 API 链接 (单 IP 尝试 10 次后自动每 30 秒轮询检测 IP 变动后开启下一轮)",
+        help="代理提取 API 链接 (单 IP 累计 3 次网络失败或 10 次注册尝试后轮换)",
     )
 
     parser.add_argument(

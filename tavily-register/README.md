@@ -28,7 +28,7 @@ uv sync
 # YesCaptcha key
 YESCAPTCHA_CLIENT_KEY: "YOUR_YESCAPTCHA_KEY"
 
-# 代理 API 配置 (配置后自动轮换 IP 并在每 10 次尝试后等待 8 分钟提取新 IP)
+# 代理 API 配置 (配置后自动轮换 IP；每个 IP 累计 3 次网络失败或 10 次注册尝试后提取新 IP)
 PROXY_API_URL: "https://white.novproxy.com/white/api?region=US&num=1&time=8&format=1&type=txt"
 
 # 临时邮箱提供商: outlook_tw (默认) 或 luckmail
@@ -74,6 +74,14 @@ uv run python main.py -n 20 --max-per-window 10 --window-seconds 3600
 YESCAPTCHA_CLIENT_KEY=your_yescaptcha_key uv run python main.py
 ```
 
+### 网络重试与 IP 轮换
+
+- Tavily/Auth0 注册链路的每个 HTTP 节点最多执行 3 次（首次请求 + 2 次重试）。
+- 同一出口 IP 的传输层网络异常跨节点累计；达到 3 次后立即废弃该 IP。
+- 轮换 IP 时保留当前邮箱、密码和已取得的验证链接，并从当前账号的最近状态继续，不会直接跳到下一个邮箱。
+- 同一 IP 仍保留最多 10 次注册尝试限制；任一阈值先达到都会触发轮换。
+- Outlook、LuckMail、YesCaptcha、代理提取和出口 IP 检测使用独立的 3 次网络重试，不计入 Tavily 出口 IP 的失败额度。
+
 
 
 ## 输出文件
@@ -84,7 +92,7 @@ YESCAPTCHA_CLIENT_KEY=your_yescaptcha_key uv run python main.py
 
 ## 常见问题
 
-- `ip-signup-blocked`：表示当前出口 IP 被禁止注册。脚本会终止批量流程
+- `ip-signup-blocked`：表示当前出口 IP 被禁止注册。配置代理 API 时脚本会轮换 IP 并继续当前账号；未配置代理时记录失败。
 - `invalid-captcha`：验证码识别结果不正确。可更换 YesCaptcha key、降低并发、增加重试间隔
 - `tavily`调整了策略，一个ip一段时间内只能注册5个，请勿滥用
 
@@ -109,4 +117,3 @@ YESCAPTCHA_CLIENT_KEY=your_yescaptcha_key uv run python main.py
 - **灵活接入渠道**：既可直接销售卡密，也可通过 API 接入自己的站点。
 - **数据独立管理**：每位合伙人的卡片、卡密、订单、积分和 API Token 相互隔离。
 - [查看合伙人机制与参与指南](https://ai.corouter.cc/partner-guide)
-
