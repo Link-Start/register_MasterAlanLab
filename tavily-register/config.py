@@ -19,7 +19,7 @@ API_KEYS_FILE = str(Path(__file__).resolve().with_name("api_keys.txt"))
 MAX_EMAIL_WAIT_TIME = int(os.getenv("MAX_EMAIL_WAIT_TIME", "300"))
 
 # 临时邮箱 provider
-EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", "outlook_tw")
+EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", "corouter")
 
 # 代理 API 配置
 PROXY_API_URL = os.getenv("PROXY_API_URL", "")
@@ -44,12 +44,31 @@ LUCKMAIL_EMAIL_TYPE = os.getenv("LUCKMAIL_EMAIL_TYPE", "ms_graph")
 LUCKMAIL_DOMAIN = os.getenv("LUCKMAIL_DOMAIN", "outlook.com")
 LUCKMAIL_POLL_INTERVAL = float(os.getenv("LUCKMAIL_POLL_INTERVAL", "3"))
 
-# outlook.tw 匿名临时邮箱配置
-OUTLOOK_TW_BASE_URL = os.getenv("OUTLOOK_TW_BASE_URL", "https://outlook.tw").rstrip("/")
-OUTLOOK_TW_USERNAME_LENGTH = max(
-    8, min(30, int(os.getenv("OUTLOOK_TW_USERNAME_LENGTH", "8")))
+# Emailbox (mail.corouter.cc) 配置。API key 仅从环境变量读取；不要写入仓库。
+COROUTER_MAIL_BASE_URL = os.getenv(
+    "COROUTER_MAIL_BASE_URL", "https://mail.corouter.cc"
+).rstrip("/")
+COROUTER_MAIL_API_KEY = (
+    os.getenv("COROUTER_MAIL_API_KEY")
+    or os.getenv("MAIL_COROUTER_API_KEY")
+    or os.getenv("COROUTER_API_KEY")
+    or ""
 )
-OUTLOOK_TW_DOMAIN_INDEX = max(0, int(os.getenv("OUTLOOK_TW_DOMAIN_INDEX", "0")))
-OUTLOOK_TW_POLL_INTERVAL = float(os.getenv("OUTLOOK_TW_POLL_INTERVAL", "3"))
-OUTLOOK_TW_REQUEST_TIMEOUT = float(os.getenv("OUTLOOK_TW_REQUEST_TIMEOUT", "30"))
-OUTLOOK_TW_REQUEST_RETRIES = max(1, int(os.getenv("OUTLOOK_TW_REQUEST_RETRIES", "3")))
+COROUTER_MAIL_TENANT_ID = (
+    os.getenv("COROUTER_MAIL_TENANT_ID")
+    or os.getenv("MAIL_COROUTER_TENANT_ID")
+    or os.getenv("COROUTER_TENANT_ID")
+    or ""
+).strip()
+COROUTER_MAIL_GROUP_ID = (
+    os.getenv("COROUTER_MAIL_GROUP_ID")
+    or os.getenv("COROUTER_MAIL_GROUP")
+    or ""
+).strip()
+COROUTER_MAIL_POLL_INTERVAL = float(os.getenv("COROUTER_MAIL_POLL_INTERVAL", "5"))
+COROUTER_MAIL_REQUEST_TIMEOUT = float(
+    os.getenv("COROUTER_MAIL_REQUEST_TIMEOUT", "65")
+)
+COROUTER_MAIL_REQUEST_RETRIES = max(
+    1, int(os.getenv("COROUTER_MAIL_REQUEST_RETRIES", "3"))
+)

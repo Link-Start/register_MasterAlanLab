@@ -26,6 +26,7 @@ from utils import generate_password
 # 配置
 OUTPUT_FILE = "api_keys.txt"
 FAILED_FILE = "failed.txt"
+REGISTERED_EMAILS_FILE = "registered_emails.txt"
 RUN_LOG_FILE = "run.log"
 
 # 注册间隔（秒），避免被限制
@@ -102,6 +103,36 @@ def load_email_list(file_path: str) -> list[str]:
                 continue
             out.append(email)
     return out
+
+
+def normalize_email(email: str) -> str:
+    """Normalize mailbox addresses for case-insensitive de-duplication."""
+    return str(email or "").strip().casefold()
+
+
+def remember_registered_email(
+    file_path: str,
+    email: str,
+    registered_emails: set[str] | None = None,
+) -> bool:
+    """Persist a mailbox once Tavily confirms that it is already registered."""
+    normalized = normalize_email(email)
+    if not normalized or "@" not in normalized:
+        return False
+    if registered_emails is not None and normalized in registered_emails:
+        return False
+    existing = {
+        normalize_email(item) for item in load_email_list(file_path)
+    }
+    if normalized in existing:
+        if registered_emails is not None:
+            registered_emails.add(normalized)
+        return False
+    with open(file_path, "a", encoding="utf-8") as file_obj:
+        file_obj.write(f"{normalized}\n")
+    if registered_emails is not None:
+        registered_emails.add(normalized)
+    return True
 
 
 def try_login_get_key(
@@ -297,6 +328,7 @@ def batch_signup(
     emails: Iterable[str] | None = None,
     output_file: str = OUTPUT_FILE,
     failed_file: str = FAILED_FILE,
+    registered_emails_file: str = REGISTERED_EMAILS_FILE,
     run_log_file: str = RUN_LOG_FILE,
     password: str | None = None,
     interval: int = REGISTER_INTERVAL,
@@ -305,6 +337,7 @@ def batch_signup(
     max_registrations_per_window: int = MAX_REGISTRATIONS_PER_WINDOW,
     registration_window_seconds: int = REGISTRATION_WINDOW_SECONDS,
     proxy_api_url: str | None = None,
+    corouter_group_id: str | None = None,
     debug_init: bool = False,
 ):
     """
@@ -348,6 +381,8 @@ def batch_signup(
         print(
             f"时间窗口限制: 单 IP 每 {registration_window_seconds/60:.1f} 分钟最多注册 {max_registrations_per_window} 个"
         )
+    if corouter_group_id:
+        print(f"Emailbox 邮箱分组: {corouter_group_id}")
     print()
 
     success_count = 0
@@ -355,19 +390,13 @@ def batch_signup(
     skipped_count = 0
     window_completed = 0
 
-    registered_emails = set()
-    if os.path.exists(output_file):
-        with open(output_file, "r", encoding="utf-8") as f:
-            for line in f:
-                line_str = line.strip()
-                if "----" in line_str:
-                    email = line_str.split("----")[0].strip()
-                    registered_emails.add(email)
-                elif "@" in line_str:
-                    registered_emails.add(line_str)
-        if registered_emails:
-            print(f"已有 {len(registered_emails)} 个邮箱注册成功，将跳过")
-            print()
+    registered_emails = {
+        normalize_email(email)
+        for email in load_email_list(output_file) + load_email_list(registered_emails_file)
+    }
+    if registered_emails:
+        print(f"已有 {len(registered_emails)} 个邮箱记录为已注册，将跳过")
+        print()
 
     start_time = datetime.now()
     total = len(email_list) if emails is not None else count
@@ -412,9 +441,11 @@ def batch_signup(
         provider = None
         email = None
         if emails is None:
+            email_generate_attempts = 0
             while True:
+                email_generate_attempts += 1
                 try:
-                    provider = create_mail_provider()
+                    provider = create_mail_provider(group_id=corouter_group_id)
                     email = provider.acquire_email()
                 except (ValueError, RuntimeError) as e:
                     err = f"email_generate_failed: {e}"
@@ -427,7 +458,7 @@ def batch_signup(
                     proxy_mgr.record_attempt()
                     provider = None
                     break
-                if email not in registered_emails:
+                if normalize_email(email) not in registered_emails:
                     break
                 print(f"跳过: 已注册邮箱 {email}，重新生成")
                 skipped_count += 1
@@ -437,9 +468,18 @@ def batch_signup(
                 except Exception:
                     pass
                 provider = None
+                if email_generate_attempts >= MAX_EMAIL_GENERATE_ATTEMPTS:
+                    err = (
+                        "no_unregistered_email_available: "
+                        f"连续 {MAX_EMAIL_GENERATE_ATTEMPTS} 次生成到已注册邮箱"
+                    )
+                    save_failed(failed_file, "N/A", err)
+                    failed_count += 1
+                    proxy_mgr.record_attempt()
+                    break
         else:
             try:
-                provider = create_mail_provider()
+                provider = create_mail_provider(group_id=corouter_group_id)
                 email = email_list[i]
                 provider.email = email
             except Exception as e:
@@ -447,7 +487,7 @@ def batch_signup(
                 failed_count += 1
                 proxy_mgr.record_attempt()
 
-        if provider is not None and email in registered_emails:
+        if provider is not None and normalize_email(email) in registered_emails:
             print("跳过: 已注册")
             skipped_count += 1
             proxy_mgr.record_attempt()
@@ -490,13 +530,26 @@ def batch_signup(
                         signup_session = result.get("session")
 
                         if result.get("success"):
+                            remember_registered_email(
+                                registered_emails_file, email, registered_emails
+                            )
                             signup_completed = True
                         else:
                             error = result.get("error", "unknown")
                             print(f"\n注册失败: {error}")
                             # 请求已成功但邮箱已存在时，转入验证/登录恢复流程。
-                            if isinstance(error, str) and "邮箱已注册" in error:
-                                signup_completed = True
+                            error_text = str(error).casefold()
+                            if (
+                                "邮箱已注册" in str(error)
+                                or "email-in-use" in error_text
+                                or "email in use" in error_text
+                            ):
+                                remember_registered_email(
+                                    registered_emails_file, email, registered_emails
+                                )
+                                print("    邮箱已注册，已写入本地记录并跳过")
+                                terminal_error = "email_already_registered"
+                                break
                             elif isinstance(error, str) and "ip-signup-blocked" in error:
                                 if not proxy_mgr.proxy_api_url:
                                     terminal_error = error
@@ -515,6 +568,9 @@ def batch_signup(
                                     debug_init=debug_init,
                                 )
                                 if api_key:
+                                    remember_registered_email(
+                                        registered_emails_file, email, registered_emails
+                                    )
                                     save_result(output_file, email, api_key)
                                     print(f"\n通过登录获取成功! API Key: {api_key[:15]}...{api_key[-4:]}")
                                     append_run_log(run_log_file, f"登录补救成功 {email}")
@@ -527,6 +583,9 @@ def batch_signup(
                     if signup_completed and result.get("api_keys"):
                         api_key = _extract_first_api_key(result.get("api_keys"))
                         if api_key:
+                            remember_registered_email(
+                                registered_emails_file, email, registered_emails
+                            )
                             save_result(output_file, email, api_key)
                             print(f"\n成功! API Key: {api_key[:15]}...{api_key[-4:]}")
                             append_run_log(run_log_file, f"注册成功 {email}")
@@ -547,6 +606,9 @@ def batch_signup(
                             debug_init=debug_init,
                         )
                         if api_key:
+                            remember_registered_email(
+                                registered_emails_file, email, registered_emails
+                            )
                             save_result(output_file, email, api_key)
                             print(f"\n成功! API Key: {api_key[:15]}...{api_key[-4:]}")
                             append_run_log(run_log_file, f"注册成功 {email}")
@@ -630,12 +692,14 @@ def retry_failed(
     *,
     failed_file: str = FAILED_FILE,
     output_file: str = OUTPUT_FILE,
+    registered_emails_file: str = REGISTERED_EMAILS_FILE,
     run_log_file: str = RUN_LOG_FILE,
     password: str | None = None,
     interval: int = REGISTER_INTERVAL,
     verify_timeout: int = VERIFY_TIMEOUT,
     verify_poll_interval: float = VERIFY_POLL_INTERVAL,
     proxy_api_url: str | None = None,
+    corouter_group_id: str | None = None,
     debug_init: bool = False,
 ):
     """
@@ -662,12 +726,14 @@ def retry_failed(
         emails=emails,
         output_file=output_file,
         failed_file=failed_file,
+        registered_emails_file=registered_emails_file,
         run_log_file=run_log_file,
         password=password,
         interval=interval,
         verify_timeout=verify_timeout,
         verify_poll_interval=verify_poll_interval,
         proxy_api_url=proxy_api_url,
+        corouter_group_id=corouter_group_id,
         debug_init=debug_init,
     )
 
@@ -690,6 +756,11 @@ if __name__ == "__main__":
     )
     parser.add_argument("--output", "-o", default=OUTPUT_FILE, help="输出文件路径")
     parser.add_argument("--failed", default=FAILED_FILE, help="失败记录文件路径")
+    parser.add_argument(
+        "--registered-emails",
+        default=REGISTERED_EMAILS_FILE,
+        help="已注册邮箱本地记录文件（默认 registered_emails.txt）",
+    )
     parser.add_argument("--run-log", default=RUN_LOG_FILE, help="运行日志文件路径")
     parser.add_argument("--password", default=None, help="注册/登录密码 (未指定时为每个账号随机生成符合合规要求的密码)")
     parser.add_argument(
@@ -699,6 +770,11 @@ if __name__ == "__main__":
         "--proxy-api-url",
         default=None,
         help="代理提取 API 链接 (单 IP 累计 3 次网络失败或 10 次注册尝试后轮换)",
+    )
+    parser.add_argument(
+        "--mail-group",
+        default=None,
+        help="Emailbox 邮箱分组 ID 或名称（也可通过 COROUTER_MAIL_GROUP_ID 设置）",
     )
 
     parser.add_argument(
@@ -727,12 +803,14 @@ if __name__ == "__main__":
         retry_failed(
             failed_file=args.failed,
             output_file=args.output,
+            registered_emails_file=args.registered_emails,
             run_log_file=args.run_log,
             password=args.password,
             interval=args.interval,
             verify_timeout=args.verify_timeout,
             verify_poll_interval=args.verify_interval,
             proxy_api_url=args.proxy_api_url,
+            corouter_group_id=args.mail_group,
             debug_init=args.debug_init,
         )
     else:
@@ -755,6 +833,7 @@ if __name__ == "__main__":
             emails=emails,
             output_file=args.output,
             failed_file=args.failed,
+            registered_emails_file=args.registered_emails,
             run_log_file=args.run_log,
             password=args.password,
             interval=args.interval,
@@ -763,5 +842,6 @@ if __name__ == "__main__":
             max_registrations_per_window=args.max_per_window,
             registration_window_seconds=args.window_seconds,
             proxy_api_url=args.proxy_api_url,
+            corouter_group_id=args.mail_group,
             debug_init=args.debug_init,
         )

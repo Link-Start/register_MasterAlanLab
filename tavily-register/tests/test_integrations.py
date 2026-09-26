@@ -11,15 +11,11 @@ class FakeResponse:
         self.payload = payload
         self.status_code = status_code
 
-    def raise_for_status(self):
-        if self.status_code >= 400:
-            raise RuntimeError(f"HTTP {self.status_code}")
-
     def json(self):
         return self.payload
 
 
-class FakeOutlookTwSession:
+class FakeCorouterSession:
     def __init__(self):
         self.headers = {}
         self.calls = []
@@ -27,78 +23,63 @@ class FakeOutlookTwSession:
 
     def get(self, url, params=None, timeout=None):
         self.calls.append((url, params, timeout))
-        if url.endswith("/api/generate"):
+        if url.endswith("/mail/groups"):
             return FakeResponse(
                 {
-                    "email": "testbox@outlook.tw",
-                    "expires": 123456789,
-                    "anonymous": True,
+                    "code": 0,
+                    "data": [{"id": "group-1", "name": "业务注册邮箱"}],
                 }
             )
-        if url.endswith("/api/emails"):
-            return FakeResponse([{"id": 42, "subject": "Verify your email"}])
-        if url.endswith("/api/email/42"):
+        if url.endswith("/mail/accounts"):
             return FakeResponse(
                 {
-                    "id": 42,
-                    "html_content": (
-                        '<a href="https://auth.tavily.com/u/email-verification?'
-                        'ticket=outlook-tw-test">Verify</a>'
-                    ),
+                    "code": 0,
+                    "data": {
+                        "items": [
+                            {"id": "acct-1", "email": "box@example.com", "status": "active"}
+                        ],
+                        "pagination": {"pages": 1},
+                    },
+                    "message": "",
+                }
+            )
+        if url.endswith("/messages"):
+            return FakeResponse(
+                {
+                    "code": 0,
+                    "data": {
+                        "items": [
+                            {
+                                "id": "message-1",
+                                "id_mode": "graph",
+                                "folder": "junkemail",
+                                "subject": "Verify your email",
+                                "body_preview": "Click the link below",
+                            }
+                        ],
+                        "channel": "graph",
+                    },
+                }
+            )
+        if "/messages/message-1" in url:
+            return FakeResponse(
+                {
+                    "code": 0,
+                    "data": {
+                        "id": "message-1",
+                        "folder": "inbox",
+                        "body_type": "html",
+                        "body": (
+                            '<a href="https://auth.tavily.com/u/email-verification?'
+                            'ticket=corouter-test">Verify</a>'
+                        ),
+                    },
                 }
             )
         raise AssertionError(f"unexpected URL: {url}")
 
     def close(self):
         self.closed = True
-
-
-class FakeCaptchaSession(FakeOutlookTwSession):
-    def __init__(self):
-        super().__init__()
-        self.captcha_passed = False
-
-    def get(self, url, params=None, timeout=None):
-        self.calls.append((url, params, timeout))
-        if url.endswith("/api/generate"):
-            return FakeResponse({"email": "captcha@outlook.tw", "expires": 123})
-        if url.endswith("/api/emails") and not self.captcha_passed:
-            return FakeResponse(
-                {"error": "captcha-required", "sitekey": "test-site-key"},
-                status_code=403,
-            )
-        if url.endswith("/api/emails"):
-            return FakeResponse(
-                [
-                    {
-                        "html_content": (
-                            "https://auth.tavily.com/u/email-verification?"
-                            "ticket=after-captcha"
-                        )
-                    }
-                ]
-            )
-        raise AssertionError(f"unexpected URL: {url}")
-
-
-class AlwaysCaptchaSession(FakeOutlookTwSession):
-    def get(self, url, params=None, timeout=None):
-        self.calls.append((url, params, timeout))
-        if url.endswith("/api/emails"):
-            return FakeResponse(
-                {"error": "captcha-required", "sitekey": "test-site-key"},
-                status_code=403,
-            )
-        raise AssertionError(f"unexpected URL: {url}")
-
-
-class FakeCaptchaSubmitSession:
-    def __init__(self):
-        self.post_calls = []
-
-    def post(self, url, headers=None, timeout=None):
-        self.post_calls.append((url, headers, timeout))
-        return FakeResponse({"success": True})
 
 
 class VerificationLinkTests(unittest.TestCase):
@@ -117,118 +98,60 @@ class VerificationLinkTests(unittest.TestCase):
         self.assertIsNone(extract_verification_link("No link here"))
 
 
-class OutlookTwProviderTests(unittest.TestCase):
+class CorouterMailProviderTests(unittest.TestCase):
     def test_acquire_email_and_wait_for_link(self):
-        from outlook_tw_provider import OutlookTwProvider
+        from corouter_mail_provider import CorouterMailProvider
 
-        session = FakeOutlookTwSession()
-        provider = OutlookTwProvider(session=session)
+        session = FakeCorouterSession()
+        with patch.multiple(
+            "corouter_mail_provider",
+            COROUTER_MAIL_API_KEY="test-api-key",
+            COROUTER_MAIL_TENANT_ID="tenant-1",
+            MAX_EMAIL_WAIT_TIME=0,
+            COROUTER_MAIL_REQUEST_RETRIES=1,
+        ):
+            provider = CorouterMailProvider(session=session)
+            self.assertEqual(provider.acquire_email(), "box@example.com")
+            self.assertEqual(
+                provider.wait_for_verification_link(),
+                "https://auth.tavily.com/u/email-verification?ticket=corouter-test",
+            )
+            provider.close()
 
-        email = provider.acquire_email()
-        link = provider.wait_for_verification_link()
-        provider.close()
-
-        self.assertEqual(email, "testbox@outlook.tw")
-        self.assertEqual(
-            link,
-            "https://auth.tavily.com/u/email-verification?ticket=outlook-tw-test",
-        )
+        self.assertEqual(session.headers["Authorization"], "Bearer test-api-key")
+        self.assertTrue(session.closed)
         self.assertTrue(provider.completed)
-        self.assertTrue(session.closed)
+        detail_calls = [call for call in session.calls if "/messages/message-1" in call[0]]
+        self.assertEqual(detail_calls[0][1]["folder"], "junkemail")
 
-    def test_default_providers_reuse_one_captcha_bearing_session(self):
-        import outlook_tw_provider
+    def test_authorization_header_accepts_copied_bearer_value(self):
+        from corouter_mail_provider import CorouterMailProvider
 
-        outlook_tw_provider.close_shared_outlook_tw_session()
-        session = FakeOutlookTwSession()
-        try:
-            with patch(
-                "outlook_tw_provider._create_http_session",
-                return_value=session,
-            ):
-                first = outlook_tw_provider.OutlookTwProvider()
-                second = outlook_tw_provider.OutlookTwProvider()
-
-            self.assertIs(first.session, session)
-            self.assertIs(second.session, session)
-            first.close()
-            second.close()
-            self.assertFalse(session.closed)
-        finally:
-            outlook_tw_provider.close_shared_outlook_tw_session()
-
-        self.assertTrue(session.closed)
-
-    def test_captcha_required_runs_yescaptcha_solver_once_then_retries(self):
-        from outlook_tw_provider import OutlookTwProvider
-
-        session = FakeCaptchaSession()
-        solver_calls = []
-
-        def solve(fake_session, sitekey):
-            solver_calls.append(sitekey)
-            fake_session.captcha_passed = True
-
-        provider = OutlookTwProvider(session=session, captcha_solver=solve)
-        self.assertEqual(provider.acquire_email(), "captcha@outlook.tw")
-        self.assertEqual(
-            provider.wait_for_verification_link(),
-            "https://auth.tavily.com/u/email-verification?ticket=after-captcha",
-        )
-        self.assertEqual(
-            solver_calls,
-            ["test-site-key"],
-        )
-
-    def test_yescaptcha_token_is_submitted_like_outlook_frontend(self):
-        from outlook_tw_captcha import complete_outlook_tw_captcha
-
-        session = FakeCaptchaSubmitSession()
-        fake_config = {"YESCAPTCHA_CLIENT_KEY": "test-client-key"}
-        with (
-            patch("signup.load_config", return_value=fake_config),
-            patch(
-                "signup.solve_turnstile_with_yescaptcha",
-                return_value="solved-turnstile-token",
-            ) as solve,
+        session = FakeCorouterSession()
+        with patch.multiple(
+            "corouter_mail_provider",
+            COROUTER_MAIL_API_KEY="Authorization: Bearer copied-key",
+            COROUTER_MAIL_TENANT_ID="tenant-1",
         ):
-            complete_outlook_tw_captcha(session, "test-site-key")
+            CorouterMailProvider(session=session)
+        self.assertEqual(session.headers["Authorization"], "Bearer copied-key")
 
-        solve.assert_called_once_with(
-            "test-site-key",
-            "https://outlook.tw/",
-            fake_config,
-        )
-        self.assertEqual(len(session.post_calls), 1)
-        url, headers, timeout = session.post_calls[0]
-        self.assertEqual(url, "https://outlook.tw/api/captcha")
-        self.assertEqual(
-            headers["cf-turnstile-response"],
-            "solved-turnstile-token",
-        )
-        self.assertEqual(headers["Content-Type"], "application/json")
-        self.assertGreater(timeout, 0)
+    def test_group_name_is_resolved_and_sent_to_account_listing(self):
+        from corouter_mail_provider import CorouterMailProvider
 
-    def test_rejected_yescaptcha_token_does_not_resolve_forever(self):
-        from outlook_tw_captcha import OutlookTwCaptchaError
-        from outlook_tw_provider import OutlookTwProvider
-
-        session = AlwaysCaptchaSession()
-        solver_calls = []
-        provider = OutlookTwProvider(
-            session=session,
-            captcha_solver=lambda *_args: solver_calls.append(True),
-        )
-        provider.email = "captcha@outlook.tw"
-
-        with self.assertRaisesRegex(
-            OutlookTwCaptchaError,
-            "拒绝了 YesCaptcha token",
+        session = FakeCorouterSession()
+        with patch.multiple(
+            "corouter_mail_provider",
+            COROUTER_MAIL_API_KEY="test-api-key",
+            COROUTER_MAIL_TENANT_ID="tenant-1",
+            MAX_EMAIL_WAIT_TIME=0,
+            COROUTER_MAIL_REQUEST_RETRIES=1,
         ):
-            provider.wait_for_verification_link()
+            provider = CorouterMailProvider(session=session, group_id="业务注册邮箱")
+            self.assertEqual(provider.acquire_email(), "box@example.com")
 
-        self.assertEqual(solver_calls, [True])
-        self.assertEqual(len(session.calls), 2)
+        account_calls = [call for call in session.calls if call[0].endswith("/mail/accounts")]
+        self.assertEqual(account_calls[0][1]["group_id"], "group-1")
 
 
 class ApiKeyOutputTests(unittest.TestCase):
@@ -267,24 +190,33 @@ class ProxyManagerTests(unittest.TestCase):
     def test_proxy_manager_rotation(self, mock_get):
         from proxy_manager import ProxyManager
 
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.text = "192.168.1.100:8080"
+        class Response:
+            status_code = 200
+
+            def __init__(self, *, text="", ip=""):
+                self.text = text
+                self.ip = ip
+
+            def json(self):
+                return {"ip": self.ip}
+
+            def raise_for_status(self):
+                return None
+
+        proxy_1 = Response(text="192.168.1.100:8080")
+        proxy_2 = Response(text="192.168.1.101:8080")
+        ip_1 = Response(ip="198.51.100.1")
+        ip_2 = Response(ip="198.51.100.2")
+        mock_get.side_effect = [proxy_1, ip_1, proxy_2, ip_2]
 
         pm = ProxyManager(proxy_api_url="http://fake-api", max_attempts_per_ip=2, poll_interval=0)
-        
-        # 提取第一个 IP
+
         p1 = pm.get_proxy()
         self.assertEqual(p1, "http://192.168.1.100:8080")
-        
-        # 使用 1 次
         pm.record_attempt()
         self.assertEqual(pm.get_proxy(), "http://192.168.1.100:8080")
-        
-        # 使用第 2 次，达到最大限制
         pm.record_attempt()
 
-        # 模拟下一个提取到的 IP 变化
-        mock_get.return_value.text = "192.168.1.101:8080"
         p2 = pm.get_proxy()
         self.assertEqual(p2, "http://192.168.1.101:8080")
         self.assertEqual(pm.attempts_on_current_ip, 0)

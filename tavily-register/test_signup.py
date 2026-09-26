@@ -322,6 +322,7 @@ class BatchResumeTests(unittest.TestCase):
                 count=1,
                 output_file=f"{tmpdir}/keys.txt",
                 failed_file=f"{tmpdir}/failed.txt",
+                registered_emails_file=f"{tmpdir}/registered_emails.txt",
                 run_log_file=f"{tmpdir}/run.log",
                 password="fixed-password",
                 proxy_api_url="http://proxy-api",
@@ -336,6 +337,55 @@ class BatchResumeTests(unittest.TestCase):
         self.assertEqual(second_call.kwargs["password"], "fixed-password")
         self.assertEqual(first_call.kwargs["proxy"], "http://proxy-a")
         self.assertEqual(second_call.kwargs["proxy"], "http://proxy-b")
+
+    def test_email_in_use_is_recorded_and_skipped_without_login_retry(self):
+        class Provider:
+            email = None
+
+            def acquire_email(self):
+                self.email = "already@example.com"
+                return self.email
+
+            def close(self):
+                pass
+
+        class Manager:
+            proxy_api_url = ""
+
+            def get_proxy(self):
+                return None
+
+            def record_attempt(self):
+                pass
+
+        with TemporaryDirectory() as tmpdir, patch(
+            "main.ProxyManager", return_value=Manager()
+        ), patch("main.load_config", return_value={}), patch(
+            "main.create_mail_provider", return_value=Provider()
+        ), patch(
+            "main.signup",
+            return_value={
+                "success": False,
+                "error": "密码设置失败: email-in-use",
+                "session": None,
+            },
+        ), patch("main.try_login_get_key") as try_login, patch(
+            "main.time.sleep", return_value=None
+        ):
+            registered_file = f"{tmpdir}/registered_emails.txt"
+            failed_file = f"{tmpdir}/failed.txt"
+            main.batch_signup(
+                count=1,
+                output_file=f"{tmpdir}/keys.txt",
+                failed_file=failed_file,
+                registered_emails_file=registered_file,
+                run_log_file=f"{tmpdir}/run.log",
+            )
+            with open(registered_file, encoding="utf-8") as registered_handle:
+                self.assertEqual(registered_handle.read().strip(), "already@example.com")
+            with open(failed_file, encoding="utf-8") as failed_handle:
+                self.assertIn("email_already_registered", failed_handle.read())
+            try_login.assert_not_called()
 
 
 if __name__ == "__main__":

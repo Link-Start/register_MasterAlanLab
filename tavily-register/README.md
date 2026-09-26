@@ -4,8 +4,8 @@
 
 - `main.py`：批量任务入口（CLI），负责邮箱生成、调用注册流程、验证与保存结果
 - `signup.py`：核心注册/登录/取 Key 逻辑（`requests.Session` 驱动）
-- `mail_provider.py`：统一邮箱提供商接口（支持 `outlook_tw` 和 `luckmail`）
-- `outlook_tw_provider.py`：`outlook.tw` 匿名临时邮箱客户端
+- `mail_provider.py`：统一邮箱提供商接口（支持 `corouter` 和 `luckmail`）
+- `corouter_mail_provider.py`：`mail.corouter.cc` Emailbox 邮箱读取客户端
 
 ## 环境要求
 
@@ -31,8 +31,8 @@ YESCAPTCHA_CLIENT_KEY: "YOUR_YESCAPTCHA_KEY"
 # 代理 API 配置 (配置后自动轮换 IP；每个 IP 累计 3 次网络失败或 10 次注册尝试后提取新 IP)
 PROXY_API_URL: "https://white.novproxy.com/white/api?region=US&num=1&time=8&format=1&type=txt"
 
-# 临时邮箱提供商: outlook_tw (默认) 或 luckmail
-EMAIL_PROVIDER: "outlook_tw"
+# 临时邮箱提供商: corouter (默认) 或 luckmail
+EMAIL_PROVIDER: "corouter"
 ```
 
 也支持通过环境变量提供：
@@ -40,21 +40,42 @@ EMAIL_PROVIDER: "outlook_tw"
 - `YESCAPTCHA_CLIENT_KEY`
 - `YESCAPTCHA_KEY`
 
-### 2) 临时邮箱环境变量（可选）
+### 2) 临时邮箱环境变量
 
 支持通过环境变量配置邮箱提供商：
 
-- `EMAIL_PROVIDER`: `outlook_tw`（默认）或 `luckmail`
-- `OUTLOOK_TW_BASE_URL`: `https://outlook.tw`
-- `OUTLOOK_TW_USERNAME_LENGTH`: 8
+- `EMAIL_PROVIDER`: `corouter`（默认）或 `luckmail`
+- `COROUTER_MAIL_API_KEY`: Emailbox API key（只从环境变量读取）
+- `COROUTER_MAIL_TENANT_ID`: Emailbox 工作空间的租户 ID（API 页面可复制）
+- `COROUTER_MAIL_BASE_URL`: `https://mail.corouter.cc`
+- `COROUTER_MAIL_POLL_INTERVAL`: 收件箱轮询间隔，默认 5 秒
+- `COROUTER_MAIL_REQUEST_TIMEOUT`: 单次请求超时，默认 65 秒
 
-`outlook.tw` 首次访问受保护接口时会显示 Cloudflare Turnstile。脚本只在收到
-`captcha-required` 后读取响应中的 `sitekey`，通过 YesCaptcha 的
-[`TurnstileTaskProxyless`](https://yescaptcha.atlassian.net/wiki/spaces/YESCAPTCHA/pages/61734913/TurnstileTaskProxyless+CloudflareTurnstile)
-获取 token，再提交到 `/api/captcha`。验证成功后的
-`mf-captcha` Cookie 会保存在批次共享的邮件 Session 中，后续随机邮箱生成和
-收件箱轮询不会重复创建打码任务。此流程复用上面的 `YESCAPTCHA_CLIENT_KEY`
-配置，不需要启动 Chrome。
+Emailbox 凭据放入被忽略的 `.env`（不是 `config.yaml`）：
+
+```dotenv
+EMAIL_PROVIDER=corouter
+COROUTER_MAIL_API_KEY=ebx_...
+COROUTER_MAIL_TENANT_ID=从 Emailbox API 页面复制的租户 ID
+# 可选：限制在指定 Emailbox 分组（支持分组 ID 或名称）
+COROUTER_MAIL_GROUP_ID=业务注册邮箱
+```
+
+也可以只在本次运行中指定分组：
+
+```bash
+uv run python main.py --count 3 --mail-group "业务注册邮箱"
+```
+
+程序识别到 `email-in-use`、邮箱已注册或注册成功后，会将邮箱写入
+`registered_emails.txt`。后续自动选邮箱会跳过记录中的地址；也可以用
+`--registered-emails PATH` 指定记录文件位置。
+
+Emailbox 接口是只读的：脚本从指定租户的 active 邮箱账号中轮换选择邮箱，
+然后查询 `inbox` 与 `junk` 中的最近邮件并提取 Tavily 验证链接。列表和正文
+请求均遵循 [Emailbox API 说明](https://mail.corouter.cc/llms.txt)。
+
+API key 以及租户 ID 都不要提交到远端仓库；`.env` 已被 `.gitignore` 忽略。
 
 ## 运行
 
@@ -88,7 +109,7 @@ YESCAPTCHA_CLIENT_KEY=your_yescaptcha_key uv run python main.py
 - 同一出口 IP 的传输层网络异常跨节点累计；达到 3 次后立即废弃该 IP。
 - 轮换 IP 时保留当前邮箱、密码和已取得的验证链接，并从当前账号的最近状态继续，不会直接跳到下一个邮箱。
 - 同一 IP 仍保留最多 10 次注册尝试限制；任一阈值先达到都会触发轮换。
-- Outlook、LuckMail、YesCaptcha、代理提取和出口 IP 检测使用独立的 3 次网络重试，不计入 Tavily 出口 IP 的失败额度。
+- Emailbox、LuckMail、YesCaptcha、代理提取和出口 IP 检测使用独立的网络重试，不计入 Tavily 出口 IP 的失败额度。
 - YesCaptcha 等打码服务使用专用直连 Session，不使用 Tavily 注册代理，并忽略系统中的 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY` 等环境代理。
 
 
@@ -97,6 +118,7 @@ YESCAPTCHA_CLIENT_KEY=your_yescaptcha_key uv run python main.py
 
 - `api_keys.txt`：成功记录（API Key 列表）
 - `failed.txt`：失败记录（邮箱与错误信息）
+- `registered_emails.txt`：已确认注册过的邮箱（本地忽略文件，自动去重）
 - `run.log`：运行日志（开始处理、成功、失败、进入 90 分钟等待、恢复时间等）
 
 ## 常见问题

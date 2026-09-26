@@ -6,7 +6,7 @@ import time
 from urllib.parse import urlparse
 
 
-TRANSIENT_HTTP_STATUSES = {408, 425, 500, 502, 503, 504}
+TRANSIENT_HTTP_STATUSES = {408, 425, 429, 500, 502, 503, 504}
 
 
 class RetryControlSignal(RuntimeError):

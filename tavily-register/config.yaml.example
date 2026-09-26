@@ -5,8 +5,14 @@ YESCAPTCHA_CLIENT_KEY: YOUR_YESCAPTCHA_KEY
 # 代理模式下，每尝试注册 10 次(无论成功失败)会自动等待 8 分钟并重新提取新 IP，确保 IP 变动后继续
 PROXY_API_URL: "https://white.novproxy.com/white/api?region=US&num=1&time=8&format=1&type=txt"
 
-# 临时邮箱提供商: outlook_tw (默认, 无需 key) 或 luckmail
-EMAIL_PROVIDER: outlook_tw
+# 临时邮箱提供商: corouter (默认) 或 luckmail
+EMAIL_PROVIDER: corouter
+
+# Emailbox (mail.corouter.cc) 配置（建议放入被 .gitignore 忽略的 .env）
+# COROUTER_MAIL_API_KEY: "ebx_..."
+# COROUTER_MAIL_TENANT_ID: "从 Emailbox API 页面复制的租户 ID"
+# COROUTER_MAIL_GROUP_ID: "可选，邮箱分组 ID 或名称"
+# COROUTER_MAIL_BASE_URL: "https://mail.corouter.cc"
 
 # LuckMail 配置 (使用 EMAIL_PROVIDER: luckmail 时可选配置)
 # LUCKMAIL_BASE_URL: https://mails.luckyous.com
