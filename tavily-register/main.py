@@ -9,6 +9,13 @@ import time
 from datetime import datetime
 from typing import Iterable
 
+from config import MAX_EMAIL_WAIT_TIME
+from corouter_mail_provider import (
+    CorouterMailProviderError,
+    CorouterMailRecoveredWithoutLink,
+    CorouterMailTimeout,
+    CorouterMailTransientError,
+)
 from mail_provider import create_mail_provider
 from proxy_manager import ProxyManager
 from retry_policy import NetworkNodeFailed, ProxyRotationRequired
@@ -31,7 +38,10 @@ RUN_LOG_FILE = "run.log"
 
 # 注册间隔（秒），避免被限制
 REGISTER_INTERVAL = 5
-VERIFY_TIMEOUT = 180
+# Emailbox may return a temporary 502 while a folder is refreshed.  Keep the
+# mailbox alive for up to five minutes before the batch advances to the next
+# address.
+VERIFY_TIMEOUT = min(300, MAX_EMAIL_WAIT_TIME)
 VERIFY_POLL_INTERVAL = 5.0
 MAX_EMAIL_GENERATE_ATTEMPTS = 30
 MAX_DOMAIN_BLOCKED_RETRIES = 10
@@ -216,12 +226,28 @@ def _verify_email_and_get_key(
     proxy_manager=None,
     workflow_state: dict | None = None,
     debug_init: bool = False,
+    verify_timeout: float | None = None,
+    verify_poll_interval: float | None = None,
 ) -> str | None:
     workflow_state = workflow_state if workflow_state is not None else {}
     print("    等待验证邮件...")
     if getattr(provider, "email", None) != email:
         provider.email = email
-    link = workflow_state.get("verification_link") or provider.wait_for_verification_link()
+    if workflow_state.get("verification_link"):
+        link = workflow_state["verification_link"]
+    else:
+        # Both built-in providers accept these keyword arguments.  Keep a
+        # no-argument fallback for third-party providers implementing the old
+        # interface so a custom provider continues to work.
+        try:
+            link = provider.wait_for_verification_link(
+                timeout=verify_timeout,
+                poll_interval=verify_poll_interval,
+            )
+        except TypeError as exc:
+            if "unexpected keyword" not in str(exc):
+                raise
+            link = provider.wait_for_verification_link()
     if not link:
         print("    超时: 未收到验证邮件")
         return None
@@ -431,11 +457,15 @@ def batch_signup(
             time.sleep(registration_window_seconds)
             append_run_log(run_log_file, "限速等待结束，继续注册")
 
-    for i in range(total):
-        maybe_wait_for_rate_limit(i)
+    i = 0
+    mailbox_replacements = 0
+    while i < total:
+        if mailbox_replacements == 0:
+            maybe_wait_for_rate_limit(i)
         current_proxy = proxy_mgr.get_proxy()
         item_password = password if password else generate_password(14)
         completed_this_item = False
+        mailbox_failed = False
 
         # 邮箱、密码和验证链接属于当前账号。换 IP 时只重建 Tavily Session。
         provider = None
@@ -604,6 +634,8 @@ def batch_signup(
                             proxy_manager=proxy_mgr,
                             workflow_state=workflow_state,
                             debug_init=debug_init,
+                            verify_timeout=verify_timeout,
+                            verify_poll_interval=verify_poll_interval,
                         )
                         if api_key:
                             remember_registered_email(
@@ -634,6 +666,19 @@ def batch_signup(
                 except NetworkNodeFailed as e:
                     terminal_error = str(e)
                     break
+                except (
+                    CorouterMailTransientError,
+                    CorouterMailRecoveredWithoutLink,
+                    CorouterMailTimeout,
+                ) as e:
+                    terminal_error = str(e)
+                    mailbox_failed = True
+                    print(f"\n邮箱不可用: {e}")
+                    break
+                except CorouterMailProviderError as e:
+                    terminal_error = str(e)
+                    print(f"\n邮箱服务错误: {e}")
+                    break
                 except Exception as e:
                     terminal_error = str(e)
                     print(f"\n异常: {e}")
@@ -647,10 +692,24 @@ def batch_signup(
                         signup_session = None
 
             if terminal_error and not completed_this_item:
-                save_failed(failed_file, email, terminal_error)
-                print(f"\n最终失败: {terminal_error}")
-                append_run_log(run_log_file, f"注册失败 {email} - {terminal_error}")
-                failed_count += 1
+                record_failure = (
+                    not mailbox_failed
+                    or emails is not None
+                    or mailbox_replacements >= MAX_EMAIL_GENERATE_ATTEMPTS
+                )
+                if record_failure:
+                    save_failed(failed_file, email, terminal_error)
+                    print(f"\n最终失败: {terminal_error}")
+                    append_run_log(
+                        run_log_file, f"注册失败 {email} - {terminal_error}"
+                    )
+                    failed_count += 1
+                else:
+                    print(f"\n跳过当前邮箱: {terminal_error}")
+                    skipped_count += 1
+                    append_run_log(
+                        run_log_file, f"跳过邮箱 {email} - {terminal_error}"
+                    )
             proxy_mgr.record_attempt()
 
         if provider is not None:
@@ -662,7 +721,26 @@ def batch_signup(
         if completed_this_item:
             window_completed += 1
 
-        if i < total - 1:
+        replace_mailbox = (
+            emails is None
+            and provider is not None
+            and mailbox_failed
+            and not completed_this_item
+            and mailbox_replacements < MAX_EMAIL_GENERATE_ATTEMPTS
+        )
+        if replace_mailbox:
+            mailbox_replacements += 1
+            print(
+                f"邮箱验证未完成，选择下一个邮箱 "
+                f"({mailbox_replacements}/{MAX_EMAIL_GENERATE_ATTEMPTS})"
+            )
+        else:
+            if mailbox_failed and mailbox_replacements >= MAX_EMAIL_GENERATE_ATTEMPTS:
+                print("当前目标的邮箱替换次数已达上限，继续下一个目标")
+            mailbox_replacements = 0
+            i += 1
+
+        if i < total:
             print(f"\n等待 {interval} 秒...")
             time.sleep(interval)
 

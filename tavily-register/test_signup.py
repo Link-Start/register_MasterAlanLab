@@ -274,6 +274,62 @@ class RetryPolicyTests(unittest.TestCase):
 
 
 class BatchResumeTests(unittest.TestCase):
+    def test_mailbox_outage_replaces_address_within_same_target(self):
+        from corouter_mail_provider import CorouterMailTimeout
+
+        class Provider:
+            def __init__(self, email):
+                self.email = email
+
+            def acquire_email(self):
+                return self.email
+
+            def close(self):
+                pass
+
+        class Manager:
+            proxy_api_url = ""
+
+            def get_proxy(self):
+                return None
+
+            def record_attempt(self):
+                pass
+
+        providers = [Provider("stale@example.com"), Provider("fresh@example.com")]
+        with TemporaryDirectory() as tmpdir, patch(
+            "main.ProxyManager", return_value=Manager()
+        ), patch("main.load_config", return_value={}), patch(
+            "main.create_mail_provider", side_effect=providers
+        ) as create_provider, patch(
+            "main.signup",
+            return_value={"success": True, "api_keys": None, "session": None},
+        ) as do_signup, patch(
+            "main._verify_email_and_get_key",
+            side_effect=[
+                CorouterMailTimeout("HTTP 502 超时"),
+                "tvly-fresh-key",
+            ],
+        ), patch("main.time.sleep", return_value=None):
+            keys_file = f"{tmpdir}/keys.txt"
+            main.batch_signup(
+                count=1,
+                output_file=keys_file,
+                failed_file=f"{tmpdir}/failed.txt",
+                registered_emails_file=f"{tmpdir}/registered_emails.txt",
+                run_log_file=f"{tmpdir}/run.log",
+            )
+            with open(keys_file, encoding="utf-8") as keys_handle:
+                saved_key = keys_handle.read().strip()
+
+        self.assertEqual(create_provider.call_count, 2)
+        self.assertEqual(do_signup.call_count, 2)
+        self.assertEqual(
+            [call.kwargs["email"] for call in do_signup.call_args_list],
+            ["stale@example.com", "fresh@example.com"],
+        )
+        self.assertEqual(saved_key, "tvly-fresh-key")
+
     def test_rotation_reuses_email_and_password(self):
         class Provider:
             email = None

@@ -50,6 +50,7 @@ EMAIL_PROVIDER: "corouter"
 - `COROUTER_MAIL_BASE_URL`: `https://mail.corouter.cc`
 - `COROUTER_MAIL_POLL_INTERVAL`: 收件箱轮询间隔，默认 5 秒
 - `COROUTER_MAIL_REQUEST_TIMEOUT`: 单次请求超时，默认 65 秒
+- `MAX_EMAIL_WAIT_TIME`: 邮箱验证等待上限，默认 300 秒（5 分钟）
 
 Emailbox 凭据放入被忽略的 `.env`（不是 `config.yaml`）：
 
@@ -74,6 +75,9 @@ uv run python main.py --count 3 --mail-group "业务注册邮箱"
 Emailbox 接口是只读的：脚本从指定租户的 active 邮箱账号中轮换选择邮箱，
 然后查询 `inbox` 与 `junk` 中的最近邮件并提取 Tavily 验证链接。列表和正文
 请求均遵循 [Emailbox API 说明](https://mail.corouter.cc/llms.txt)。
+如果收件箱暂时返回 502 或连接超时，程序会按 1、2、4 … 60 秒退避重试，
+总等待时间最多 5 分钟；超时后记录当前邮箱并继续下一个。收件箱恢复后若
+确认没有 Tavily 验证链接，也会立即跳过当前邮箱，不再空等下一轮轮询。
 
 API key 以及租户 ID 都不要提交到远端仓库；`.env` 已被 `.gitignore` 忽略。
 

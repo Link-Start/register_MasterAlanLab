@@ -25,12 +25,28 @@ from config import (
     COROUTER_MAIL_TENANT_ID,
     MAX_EMAIL_WAIT_TIME,
 )
-from retry_policy import external_request_with_retry
+from retry_policy import TRANSIENT_HTTP_STATUSES, external_request_with_retry
 from utils import extract_verification_link
 
 
 class CorouterMailProviderError(RuntimeError):
     """Mailbox discovery, API, or polling failure."""
+
+
+class CorouterMailTransientError(CorouterMailProviderError):
+    """A temporary Emailbox outage (for example HTTP 502)."""
+
+    def __init__(self, message: str, *, status_code: int | None = None):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class CorouterMailRecoveredWithoutLink(CorouterMailProviderError):
+    """The mailbox is readable again but contains no verification link."""
+
+
+class CorouterMailTimeout(CorouterMailProviderError):
+    """The mailbox deadline elapsed without a usable verification link."""
 
 
 _ACCOUNT_CURSOR_LOCK = threading.Lock()
@@ -88,14 +104,26 @@ class CorouterMailProvider:
             f"/mail/{suffix.lstrip('/')}"
         )
 
-    def _request_json(self, path: str, *, params: dict | None = None):
+    def _request_json(
+        self,
+        path: str,
+        *,
+        params: dict | None = None,
+        timeout: float | None = None,
+        max_attempts: int | None = None,
+    ):
         url = path if path.startswith("http") else self._path(path)
+        request_timeout = (
+            COROUTER_MAIL_REQUEST_TIMEOUT
+            if timeout is None
+            else max(0.1, float(timeout))
+        )
 
         def request(_url):
             return self.session.get(
                 _url,
                 params=params,
-                timeout=COROUTER_MAIL_REQUEST_TIMEOUT,
+                timeout=request_timeout,
             )
 
         try:
@@ -103,27 +131,43 @@ class CorouterMailProvider:
                 request,
                 url,
                 node=f"Emailbox {path}",
-                max_attempts=COROUTER_MAIL_REQUEST_RETRIES,
+                max_attempts=(
+                    COROUTER_MAIL_REQUEST_RETRIES
+                    if max_attempts is None
+                    else max(1, int(max_attempts))
+                ),
                 retry_delay=1.0,
             )
         except Exception as exc:
-            raise CorouterMailProviderError(f"Emailbox 请求失败: {exc}") from exc
+            # A transport timeout/connection reset is recoverable in exactly
+            # the same way as a 502 response.  The polling loop applies the
+            # longer, deadline-aware backoff; this short request retry only
+            # handles transient blips within one poll.
+            raise CorouterMailTransientError(f"Emailbox 请求失败: {exc}") from exc
 
         status = getattr(response, "status_code", 200)
         try:
             payload = response.json()
         except Exception as exc:
-            raise CorouterMailProviderError(
-                f"Emailbox 返回了无效 JSON (HTTP {status})"
-            ) from exc
+            message = f"Emailbox 返回了无效 JSON (HTTP {status})"
+            if status in TRANSIENT_HTTP_STATUSES:
+                raise CorouterMailTransientError(
+                    message, status_code=status
+                ) from exc
+            raise CorouterMailProviderError(message) from exc
 
         if status >= 400:
             message = payload.get("message") if isinstance(payload, dict) else payload
             code = payload.get("code") if isinstance(payload, dict) else None
             code_text = f" code={code}" if code not in (None, 0) else ""
-            raise CorouterMailProviderError(
+            error_message = (
                 f"Emailbox API HTTP {status}{code_text}: {message or '请求失败'}"
             )
+            if status in TRANSIENT_HTTP_STATUSES:
+                raise CorouterMailTransientError(
+                    error_message, status_code=status
+                )
+            raise CorouterMailProviderError(error_message)
         if not isinstance(payload, dict):
             raise CorouterMailProviderError("Emailbox 响应格式异常")
         code = payload.get("code", 0)
@@ -250,21 +294,30 @@ class CorouterMailProvider:
             message.get("verification_code"),
         )
 
-    def _read_messages(self) -> list[dict]:
+    def _read_messages(
+        self, *, timeout: float | None = None, max_attempts: int | None = None
+    ) -> list[dict]:
         data = self._request_json(
             f"accounts/{quote(str(self.account_id), safe='')}/messages",
             params={"folder": "all", "top": 50, "skip": 0},
+            timeout=timeout,
+            max_attempts=max_attempts,
         )
         return self._items(data)
 
-    def _read_message_detail(self, message: dict) -> dict | None:
+    def _read_message_detail(
+        self,
+        message: dict,
+        *,
+        timeout: float | None = None,
+        max_attempts: int | None = None,
+    ) -> dict | None:
         message_id = message.get("id")
         if message_id is None:
             return None
         key = f"{message.get('folder') or 'inbox'}:{message_id}:{message.get('id_mode') or ''}"
         if key in self._seen_message_ids:
             return None
-        self._seen_message_ids.add(key)
         # The documented value is ``junk``, while Outlook/IMAP-backed
         # accounts may return the concrete folder name ``junkemail``.
         # Preserve the value returned by the list endpoint for the detail
@@ -280,41 +333,121 @@ class CorouterMailProvider:
             f"accounts/{quote(str(self.account_id), safe='')}/messages/"
             f"{quote(str(message_id), safe='')}",
             params=params,
+            timeout=timeout,
+            max_attempts=max_attempts,
         )
+        # Mark a message only after the detail request succeeds. A temporary
+        # 502 must not hide its contents on the next poll.
+        self._seen_message_ids.add(key)
         return data if isinstance(data, dict) else None
 
-    def wait_for_verification_link(self) -> str:
+    def wait_for_verification_link(
+        self,
+        *,
+        timeout: float | None = None,
+        poll_interval: float | None = None,
+    ) -> str:
+        """Poll this mailbox with a deadline-aware outage backoff.
+
+        Emailbox occasionally returns a burst of HTTP 502 responses while a
+        folder is being refreshed.  A request retry must not restart the
+        five-minute budget, so message requests use one short attempt and the
+        polling loop performs exponential backoff (1, 2, 4 ... 60 seconds).
+        Once a temporarily broken folder becomes readable, an empty result is
+        considered a stale mailbox and is returned to the batch orchestrator
+        immediately instead of waiting another five minutes.
+        """
         if self.verification_link:
             return self.verification_link
         if not self.email:
             raise CorouterMailProviderError("尚未生成 Emailbox 邮箱")
         self._resolve_account()
 
-        deadline = time.monotonic() + max(0.0, float(MAX_EMAIL_WAIT_TIME))
+        wait_seconds = min(
+            300.0,
+            max(
+                0.0,
+                float(MAX_EMAIL_WAIT_TIME if timeout is None else timeout),
+            ),
+        )
+        interval = (
+            COROUTER_MAIL_POLL_INTERVAL
+            if poll_interval is None
+            else max(0.1, float(poll_interval))
+        )
+        deadline = time.monotonic() + max(0.0, float(wait_seconds))
         last_error = None
-        while True:
+        had_transient_error = False
+        backoff = 1.0
+        first_poll = True
+        while first_poll or time.monotonic() < deadline:
+            first_poll = False
+            remaining = max(0.1, deadline - time.monotonic())
             try:
-                for message in self._read_messages():
+                # One request per poll keeps the global five-minute deadline
+                # authoritative even when the upstream request itself times
+                # out.  The outer loop is the long-lived retry mechanism.
+                messages = self._read_messages(
+                    timeout=min(float(COROUTER_MAIL_REQUEST_TIMEOUT), remaining),
+                    max_attempts=1,
+                )
+                found_link = None
+                for message in messages:
                     if not self._is_new_message(message, self._started_at):
                         continue
                     link = self._message_link(message)
                     if not link:
-                        detail = self._read_message_detail(message)
+                        detail = self._read_message_detail(
+                            message,
+                            timeout=min(
+                                float(COROUTER_MAIL_REQUEST_TIMEOUT),
+                                max(0.1, deadline - time.monotonic()),
+                            ),
+                            max_attempts=1,
+                        )
                         link = self._message_link(detail or {})
                     if link:
-                        self.completed = True
-                        self.verification_link = link
-                        return link
+                        found_link = link
+                        break
+                if found_link:
+                    self.completed = True
+                    self.verification_link = found_link
+                    return found_link
+
+                # If the folder was unavailable and then came back without a
+                # Tavily link, this address is known to be stale.  Let the
+                # batch layer close it and acquire the next mailbox now.
+                if had_transient_error:
+                    raise CorouterMailRecoveredWithoutLink(
+                        "Emailbox 收件箱恢复，但未找到 Tavily 验证链接；跳过当前邮箱"
+                    )
                 last_error = None
+                backoff = 1.0
+                delay = min(interval, max(0.0, deadline - time.monotonic()))
             except CorouterMailProviderError as exc:
                 last_error = exc
+                if isinstance(exc, CorouterMailTransientError):
+                    had_transient_error = True
+                else:
+                    # A recovered-but-empty mailbox or a permanent API error
+                    # is terminal for this address. Only transient transport
+                    # and HTTP failures participate in outage backoff.
+                    raise
+                delay = min(backoff, max(0.0, deadline - time.monotonic()))
+                print(
+                    f"    [邮箱退避重试] {self.email} 暂时不可用，"
+                    f"{delay:g} 秒后重试（剩余 {max(0, int(deadline - time.monotonic()))} 秒）"
+                )
+                backoff = min(backoff * 2.0, 60.0)
 
-            if time.monotonic() >= deadline:
+            if delay <= 0 or time.monotonic() >= deadline:
                 break
-            time.sleep(max(0.1, float(COROUTER_MAIL_POLL_INTERVAL)))
+            time.sleep(delay)
 
         suffix = f": {last_error}" if last_error else ""
-        raise CorouterMailProviderError(f"等待 Emailbox 的 Tavily 验证邮件超时{suffix}")
+        raise CorouterMailTimeout(
+            f"等待 Emailbox 的 Tavily 验证邮件超时（已等待 {wait_seconds:g} 秒）{suffix}"
+        )
 
     def cancel(self) -> None:
         # Emailbox exposes read-only API endpoints; accounts remain managed by
@@ -333,6 +466,9 @@ EmailboxProviderError = CorouterMailProviderError
 __all__ = [
     "CorouterMailProvider",
     "CorouterMailProviderError",
+    "CorouterMailTransientError",
+    "CorouterMailRecoveredWithoutLink",
+    "CorouterMailTimeout",
     "EmailboxProvider",
     "EmailboxProviderError",
 ]

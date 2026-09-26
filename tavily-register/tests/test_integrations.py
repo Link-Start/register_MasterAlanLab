@@ -107,6 +107,7 @@ class CorouterMailProviderTests(unittest.TestCase):
             "corouter_mail_provider",
             COROUTER_MAIL_API_KEY="test-api-key",
             COROUTER_MAIL_TENANT_ID="tenant-1",
+            COROUTER_MAIL_GROUP_ID="",
             MAX_EMAIL_WAIT_TIME=0,
             COROUTER_MAIL_REQUEST_RETRIES=1,
         ):
@@ -152,6 +153,114 @@ class CorouterMailProviderTests(unittest.TestCase):
 
         account_calls = [call for call in session.calls if call[0].endswith("/mail/accounts")]
         self.assertEqual(account_calls[0][1]["group_id"], "group-1")
+
+    def test_502_backoff_then_empty_mailbox_is_skipped(self):
+        from corouter_mail_provider import (
+            CorouterMailProvider,
+            CorouterMailRecoveredWithoutLink,
+        )
+
+        class OutageSession(FakeCorouterSession):
+            def __init__(self):
+                super().__init__()
+                self.message_reads = 0
+
+            def get(self, url, params=None, timeout=None):
+                if url.endswith("/messages"):
+                    self.message_reads += 1
+                    if self.message_reads <= 2:
+                        return FakeResponse({"message": "upstream unavailable"}, 502)
+                    return FakeResponse({"code": 0, "data": {"items": []}})
+                return super().get(url, params=params, timeout=timeout)
+
+        clock = [0.0]
+        sleeps = []
+
+        def sleep(seconds):
+            sleeps.append(seconds)
+            clock[0] += seconds
+
+        with patch.multiple(
+            "corouter_mail_provider",
+            COROUTER_MAIL_API_KEY="test-api-key",
+            COROUTER_MAIL_TENANT_ID="tenant-1",
+            COROUTER_MAIL_GROUP_ID="",
+        ), patch("corouter_mail_provider.time.monotonic", side_effect=lambda: clock[0]), patch(
+            "corouter_mail_provider.time.sleep", side_effect=sleep
+        ):
+            session = OutageSession()
+            provider = CorouterMailProvider(session=session)
+            provider.email = "box@example.com"
+            provider.account_id = "acct-1"
+            with self.assertRaises(CorouterMailRecoveredWithoutLink):
+                provider.wait_for_verification_link(timeout=300)
+
+        self.assertEqual(sleeps, [1.0, 2.0])
+        self.assertEqual(session.message_reads, 3)
+
+    def test_502_backoff_then_verification_link_succeeds(self):
+        from corouter_mail_provider import CorouterMailProvider
+
+        class OutageSession(FakeCorouterSession):
+            def __init__(self):
+                super().__init__()
+                self.message_reads = 0
+
+            def get(self, url, params=None, timeout=None):
+                if url.endswith("/messages"):
+                    self.message_reads += 1
+                    if self.message_reads == 1:
+                        return FakeResponse({"message": "upstream unavailable"}, 502)
+                return super().get(url, params=params, timeout=timeout)
+
+        with patch.multiple(
+            "corouter_mail_provider",
+            COROUTER_MAIL_API_KEY="test-api-key",
+            COROUTER_MAIL_TENANT_ID="tenant-1",
+            COROUTER_MAIL_GROUP_ID="",
+        ), patch("corouter_mail_provider.time.sleep", return_value=None) as sleep:
+            provider = CorouterMailProvider(session=OutageSession())
+            provider.email = "box@example.com"
+            provider.account_id = "acct-1"
+            self.assertEqual(
+                provider.wait_for_verification_link(timeout=300),
+                "https://auth.tavily.com/u/email-verification?ticket=corouter-test",
+            )
+        sleep.assert_called_once_with(1.0)
+
+    def test_502_backoff_stops_at_five_minute_deadline(self):
+        from corouter_mail_provider import CorouterMailProvider, CorouterMailProviderError
+
+        class OutageSession(FakeCorouterSession):
+            def get(self, url, params=None, timeout=None):
+                if url.endswith("/messages"):
+                    return FakeResponse({"message": "upstream unavailable"}, 502)
+                return super().get(url, params=params, timeout=timeout)
+
+        clock = [0.0]
+        sleeps = []
+
+        def sleep(seconds):
+            sleeps.append(seconds)
+            clock[0] += seconds
+
+        with patch.multiple(
+            "corouter_mail_provider",
+            COROUTER_MAIL_API_KEY="test-api-key",
+            COROUTER_MAIL_TENANT_ID="tenant-1",
+            COROUTER_MAIL_GROUP_ID="",
+        ), patch("corouter_mail_provider.time.monotonic", side_effect=lambda: clock[0]), patch(
+            "corouter_mail_provider.time.sleep", side_effect=sleep
+        ):
+            provider = CorouterMailProvider(session=OutageSession())
+            provider.email = "box@example.com"
+            provider.account_id = "acct-1"
+            with self.assertRaisesRegex(CorouterMailProviderError, "超时"):
+                provider.wait_for_verification_link(timeout=300)
+
+        self.assertEqual(clock[0], 300.0)
+        self.assertEqual(sleeps[:4], [1.0, 2.0, 4.0, 8.0])
+        self.assertLessEqual(max(sleeps), 60.0)
 
 
 class ApiKeyOutputTests(unittest.TestCase):

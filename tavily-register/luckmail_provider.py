@@ -53,7 +53,12 @@ class LuckMailProvider:
             raise LuckMailProviderError("LuckMail 创建订单成功，但未返回邮箱地址")
         return self.order.email_address
 
-    def wait_for_verification_link(self) -> str:
+    def wait_for_verification_link(
+        self,
+        *,
+        timeout: float | None = None,
+        poll_interval: float | None = None,
+    ) -> str:
         if not self.order:
             raise LuckMailProviderError("尚未创建 LuckMail 订单")
         if self.verification_link:
@@ -62,8 +67,12 @@ class LuckMailProvider:
         result = external_request_with_retry(
             lambda _url: self.client.user.wait_for_code(
                 self.order.order_no,
-                timeout=MAX_EMAIL_WAIT_TIME,
-                interval=LUCKMAIL_POLL_INTERVAL,
+                timeout=(MAX_EMAIL_WAIT_TIME if timeout is None else timeout),
+                interval=(
+                    LUCKMAIL_POLL_INTERVAL
+                    if poll_interval is None
+                    else poll_interval
+                ),
             ),
             "luckmail://wait-for-code",
             node="LuckMail wait_for_code",
