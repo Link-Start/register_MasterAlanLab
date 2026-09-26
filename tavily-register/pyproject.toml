@@ -8,6 +8,5 @@ dependencies = [
     "curl-cffi>=0.15.0",
     "pyaml>=25.7.0",
     "pysocks>=1.7.1",
-    "python-dotenv>=1.0.0",
     "requests>=2.32.5",
 ]

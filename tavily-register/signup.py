@@ -10,11 +10,11 @@ import re
 import sys
 import io
 import os
-import yaml
 import json
 from datetime import datetime
 import time
 from email import message_from_string
+from config import load_config as _load_yaml_config
 
 from retry_policy import (
     ProxyRotationRequired,
@@ -79,13 +79,7 @@ def load_config(config_path: str = None) -> dict:
     Returns:
         配置字典
     """
-    if config_path is None:
-        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.yaml")
-
-    with open(config_path, 'r', encoding='utf-8') as f:
-        config = yaml.safe_load(f)
-
-    return config
+    return _load_yaml_config(config_path)
 
 
 try:
@@ -297,8 +291,6 @@ def solve_turnstile_with_yescaptcha(sitekey: str, page_url: str, config: dict) -
     client_key = (
         config.get("YESCAPTCHA_CLIENT_KEY")
         or config.get("YESCAPTCHA_KEY")
-        or os.getenv("YESCAPTCHA_CLIENT_KEY")
-        or os.getenv("YESCAPTCHA_KEY")
         or ""
     ).strip()
     if not client_key:
@@ -458,8 +450,6 @@ def recognize_captcha_with_yescaptcha(captcha_base64: str, config: dict) -> str 
     client_key = (
         config.get("YESCAPTCHA_CLIENT_KEY")
         or config.get("YESCAPTCHA_KEY")
-        or os.getenv("YESCAPTCHA_CLIENT_KEY")
-        or os.getenv("YESCAPTCHA_KEY")
         or ""
     ).strip()
     if not client_key:

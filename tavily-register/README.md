@@ -20,47 +20,16 @@ uv sync
 
 ## 配置
 
-### 1) `config.yaml`
+### `config.yaml`
 
-`signup.py` 会从仓库根目录读取 `config.yaml`（已在 `.gitignore` 中忽略）。现在验证码识别默认走 YesCaptcha。示例：
+程序统一从 `config.yaml` 读取全部配置（验证码、代理、邮箱服务、浏览器参数等）。
+该文件已加入 `.gitignore`，首次使用请复制示例：
 
-```yaml
-# YesCaptcha key
-YESCAPTCHA_CLIENT_KEY: "YOUR_YESCAPTCHA_KEY"
-
-# 代理 API 配置 (配置后自动轮换 IP；每个 IP 累计 3 次网络失败或 10 次注册尝试后提取新 IP)
-PROXY_API_URL: "https://white.novproxy.com/white/api?region=US&num=1&time=8&format=1&type=txt"
-
-# 临时邮箱提供商: corouter (默认) 或 luckmail
-EMAIL_PROVIDER: "corouter"
+```bash
+cp config.yaml.example config.yaml
 ```
 
-也支持通过环境变量提供：
-
-- `YESCAPTCHA_CLIENT_KEY`
-- `YESCAPTCHA_KEY`
-
-### 2) 临时邮箱环境变量
-
-支持通过环境变量配置邮箱提供商：
-
-- `EMAIL_PROVIDER`: `corouter`（默认）或 `luckmail`
-- `COROUTER_MAIL_API_KEY`: Emailbox API key（只从环境变量读取）
-- `COROUTER_MAIL_TENANT_ID`: Emailbox 工作空间的租户 ID（API 页面可复制）
-- `COROUTER_MAIL_BASE_URL`: `https://mail.corouter.cc`
-- `COROUTER_MAIL_POLL_INTERVAL`: 收件箱轮询间隔，默认 5 秒
-- `COROUTER_MAIL_REQUEST_TIMEOUT`: 单次请求超时，默认 65 秒
-- `MAX_EMAIL_WAIT_TIME`: 邮箱验证等待上限，默认 300 秒（5 分钟）
-
-Emailbox 凭据放入被忽略的 `.env`（不是 `config.yaml`）：
-
-```dotenv
-EMAIL_PROVIDER=corouter
-COROUTER_MAIL_API_KEY=ebx_...
-COROUTER_MAIL_TENANT_ID=从 Emailbox API 页面复制的租户 ID
-# 可选：限制在指定 Emailbox 分组（支持分组 ID 或名称）
-COROUTER_MAIL_GROUP_ID=业务注册邮箱
-```
+所有值（包括敏感凭据）都填写到 `config.yaml`。
 
 也可以只在本次运行中指定分组：
 
@@ -79,7 +48,7 @@ Emailbox 接口是只读的：脚本从指定租户的 active 邮箱账号中轮
 总等待时间最多 5 分钟；超时后记录当前邮箱并继续下一个。收件箱恢复后若
 确认没有 Tavily 验证链接，也会立即跳过当前邮箱，不再空等下一轮轮询。
 
-API key 以及租户 ID 都不要提交到远端仓库；`.env` 已被 `.gitignore` 忽略。
+API key 以及租户 ID 都不要提交到远端仓库；`config.yaml` 已被 `.gitignore` 忽略。
 
 ## 运行
 
@@ -99,12 +68,6 @@ uv run python main.py
 
 ```bash
 uv run python main.py -n 20 --max-per-window 10 --window-seconds 3600
-```
-
-如果你没有把 YesCaptcha key 写进 `config.yaml`，也可以直接用环境变量运行：
-
-```bash
-YESCAPTCHA_CLIENT_KEY=your_yescaptcha_key uv run python main.py
 ```
 
 ### 网络重试与 IP 轮换

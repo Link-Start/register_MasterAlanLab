@@ -40,8 +40,6 @@ env/
 config.yaml
 *.local.yaml
 *.secret.yaml
-.env
-.env.*
 
 # Project runtime output & logs
 api_keys.txt

@@ -1,19 +1,39 @@
-# YesCaptcha 识别 key
+# Tavily 注册器唯一配置文件模板。
+# 复制为 config.yaml 后填写实际值；config.yaml 已被 .gitignore 忽略。
+
+# YesCaptcha
 YESCAPTCHA_CLIENT_KEY: YOUR_YESCAPTCHA_KEY
 
-# 代理 API 配置 (链接提取代理地址，每次返回纯文本 IP:PORT)
-# 代理模式下，每尝试注册 10 次(无论成功失败)会自动等待 8 分钟并重新提取新 IP，确保 IP 变动后继续
-PROXY_API_URL: "https://white.novproxy.com/white/api?region=US&num=1&time=8&format=1&type=txt"
+# 代理 API（留空表示不使用代理）
+PROXY_API_URL: ""
 
-# 临时邮箱提供商: corouter (默认) 或 luckmail
+# 临时邮箱提供商: corouter 或 luckmail
 EMAIL_PROVIDER: corouter
+MAX_EMAIL_WAIT_TIME: 300
 
-# Emailbox (mail.corouter.cc) 配置（建议放入被 .gitignore 忽略的 .env）
-# COROUTER_MAIL_API_KEY: "ebx_..."
-# COROUTER_MAIL_TENANT_ID: "从 Emailbox API 页面复制的租户 ID"
-# COROUTER_MAIL_GROUP_ID: "可选，邮箱分组 ID 或名称"
-# COROUTER_MAIL_BASE_URL: "https://mail.corouter.cc"
+# Emailbox / Corouter
+COROUTER_MAIL_API_KEY: YOUR_COROUTER_MAIL_API_KEY
+COROUTER_MAIL_TENANT_ID: YOUR_COROUTER_TENANT_ID
+COROUTER_MAIL_GROUP_ID: ""
+COROUTER_MAIL_BASE_URL: https://mail.corouter.cc
+COROUTER_MAIL_POLL_INTERVAL: 5
+COROUTER_MAIL_REQUEST_TIMEOUT: 65
+COROUTER_MAIL_REQUEST_RETRIES: 3
 
-# LuckMail 配置 (使用 EMAIL_PROVIDER: luckmail 时可选配置)
-# LUCKMAIL_BASE_URL: https://mails.luckyous.com
-# LUCKMAIL_API_KEY: YOUR_LUCKMAIL_API_KEY
+# LuckMail（EMAIL_PROVIDER: luckmail 时使用）
+LUCKMAIL_BASE_URL: https://mails.luckyous.com
+LUCKMAIL_API_KEY: YOUR_LUCKMAIL_API_KEY
+LUCKMAIL_PROJECT_CODE: grok
+LUCKMAIL_EMAIL_TYPE: ms_graph
+LUCKMAIL_DOMAIN: outlook.com
+LUCKMAIL_POLL_INTERVAL: 3
+
+# 浏览器 / BitBrowser（按需修改）
+HEADLESS: false
+BROWSER_TIMEOUT: 30000
+HUMAN_DELAY_MIN: 0.8
+HUMAN_DELAY_MAX: 2.4
+BIT_BROWSER_API_URL: http://127.0.0.1:54346
+BIT_BROWSER_ID: ""
+BIT_BROWSER_NAME: tavily-register
+BIT_BROWSER_CLOSE_WAIT: 5

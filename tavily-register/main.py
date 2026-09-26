@@ -372,7 +372,7 @@ def batch_signup(
     config = load_config()
 
     if not proxy_api_url:
-        proxy_api_url = config.get("PROXY_API_URL") or os.getenv("PROXY_API_URL")
+        proxy_api_url = config.get("PROXY_API_URL")
 
     proxy_mgr = ProxyManager(
         proxy_api_url=proxy_api_url,
