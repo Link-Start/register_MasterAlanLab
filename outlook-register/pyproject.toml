@@ -1,0 +1,30 @@
+[project]
+name = "microsoft-register"
+version = "0.1.0"
+description = "Reconstructed Outlook/Microsoft signup protocol client"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "curl-cffi>=0.13.0",
+    "Pillow>=10.0.0",
+    "python-dotenv>=1.0.0",
+    "requests>=2.32.0",
+]
+
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.9.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
