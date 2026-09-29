@@ -11,10 +11,12 @@ from typing import Iterable
 
 from config import MAX_EMAIL_WAIT_TIME
 from corouter_mail_provider import (
+    CorouterMailboxPool,
     CorouterMailProviderError,
     CorouterMailRecoveredWithoutLink,
     CorouterMailTimeout,
     CorouterMailTransientError,
+    CorouterNoAvailableMailbox,
 )
 from mail_provider import create_mail_provider
 from proxy_manager import ProxyManager
@@ -131,13 +133,10 @@ def remember_registered_email(
         return False
     if registered_emails is not None and normalized in registered_emails:
         return False
-    existing = {
-        normalize_email(item) for item in load_email_list(file_path)
-    }
-    if normalized in existing:
-        if registered_emails is not None:
-            registered_emails.add(normalized)
-        return False
+    if registered_emails is None:
+        existing = {normalize_email(item) for item in load_email_list(file_path)}
+        if normalized in existing:
+            return False
     with open(file_path, "a", encoding="utf-8") as file_obj:
         file_obj.write(f"{normalized}\n")
     if registered_emails is not None:
@@ -424,6 +423,20 @@ def batch_signup(
         print(f"已有 {len(registered_emails)} 个邮箱记录为已注册，将跳过")
         print()
 
+    if emails is not None:
+        original_count = len(email_list)
+        email_list = [
+            email for email in email_list
+            if normalize_email(email) not in registered_emails
+        ]
+        skipped_count = original_count - len(email_list)
+        if skipped_count:
+            print(f"已从输入列表排除 {skipped_count} 个已注册邮箱")
+        if not email_list:
+            print("输入列表中的邮箱均已注册，无需处理")
+            return
+
+    mailbox_pool = CorouterMailboxPool(registered_emails) if emails is None else None
     start_time = datetime.now()
     total = len(email_list) if emails is not None else count
 
@@ -460,12 +473,9 @@ def batch_signup(
     i = 0
     mailbox_replacements = 0
     while i < total:
-        if mailbox_replacements == 0:
-            maybe_wait_for_rate_limit(i)
-        current_proxy = proxy_mgr.get_proxy()
-        item_password = password if password else generate_password(14)
         completed_this_item = False
         mailbox_failed = False
+        mailboxes_exhausted = False
 
         # 邮箱、密码和验证链接属于当前账号。换 IP 时只重建 Tavily Session。
         provider = None
@@ -475,8 +485,17 @@ def batch_signup(
             while True:
                 email_generate_attempts += 1
                 try:
-                    provider = create_mail_provider(group_id=corouter_group_id)
+                    provider = create_mail_provider(
+                        group_id=corouter_group_id, mailbox_pool=mailbox_pool
+                    )
                     email = provider.acquire_email()
+                except CorouterNoAvailableMailbox as e:
+                    print(f"\n{e}，结束本批任务")
+                    if provider is not None:
+                        provider.close()
+                    provider = None
+                    mailboxes_exhausted = True
+                    break
                 except (ValueError, RuntimeError) as e:
                     err = f"email_generate_failed: {e}"
                     print(f"\n{'='*60}")
@@ -485,14 +504,14 @@ def batch_signup(
                     print(err)
                     save_failed(failed_file, "N/A", err)
                     failed_count += 1
-                    proxy_mgr.record_attempt()
+                    if provider is not None:
+                        provider.close()
                     provider = None
                     break
                 if normalize_email(email) not in registered_emails:
                     break
                 print(f"跳过: 已注册邮箱 {email}，重新生成")
                 skipped_count += 1
-                proxy_mgr.record_attempt()
                 try:
                     provider.close()
                 except Exception:
@@ -505,8 +524,10 @@ def batch_signup(
                     )
                     save_failed(failed_file, "N/A", err)
                     failed_count += 1
-                    proxy_mgr.record_attempt()
+                    mailboxes_exhausted = True
                     break
+            if mailboxes_exhausted:
+                break
         else:
             try:
                 provider = create_mail_provider(group_id=corouter_group_id)
@@ -515,19 +536,12 @@ def batch_signup(
             except Exception as e:
                 save_failed(failed_file, "N/A", f"email_provider_failed: {e}")
                 failed_count += 1
-                proxy_mgr.record_attempt()
-
-        if provider is not None and normalize_email(email) in registered_emails:
-            print("跳过: 已注册")
-            skipped_count += 1
-            proxy_mgr.record_attempt()
-            try:
-                provider.close()
-            except Exception:
-                pass
-            provider = None
 
         if provider is not None:
+            if mailbox_replacements == 0:
+                maybe_wait_for_rate_limit(i)
+            current_proxy = proxy_mgr.get_proxy()
+            item_password = password if password else generate_password(14)
             print(f"\n{'='*60}")
             print(f"[{i+1}/{total}] {email}")
             print(f"密码: {item_password}")

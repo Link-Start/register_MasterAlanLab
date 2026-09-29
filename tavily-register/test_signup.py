@@ -274,6 +274,46 @@ class RetryPolicyTests(unittest.TestCase):
 
 
 class BatchResumeTests(unittest.TestCase):
+    def test_exhausted_mailbox_pool_does_not_fetch_or_count_proxy(self):
+        from corouter_mail_provider import CorouterNoAvailableMailbox
+
+        class Provider:
+            def acquire_email(self):
+                raise CorouterNoAvailableMailbox("没有未注册邮箱")
+
+            def close(self):
+                pass
+
+        class Manager:
+            proxy_api_url = "http://proxy-api"
+            get_proxy_calls = 0
+            attempts = 0
+
+            def get_proxy(self):
+                self.get_proxy_calls += 1
+                return "http://proxy"
+
+            def record_attempt(self):
+                self.attempts += 1
+
+        manager = Manager()
+        with TemporaryDirectory() as tmpdir, patch(
+            "main.ProxyManager", return_value=manager
+        ), patch("main.load_config", return_value={}), patch(
+            "main.create_mail_provider", return_value=Provider()
+        ):
+            main.batch_signup(
+                count=1,
+                output_file=f"{tmpdir}/keys.txt",
+                failed_file=f"{tmpdir}/failed.txt",
+                registered_emails_file=f"{tmpdir}/registered_emails.txt",
+                run_log_file=f"{tmpdir}/run.log",
+                proxy_api_url="http://proxy-api",
+            )
+
+        self.assertEqual(manager.get_proxy_calls, 0)
+        self.assertEqual(manager.attempts, 0)
+
     def test_mailbox_outage_replaces_address_within_same_target(self):
         from corouter_mail_provider import CorouterMailTimeout
 

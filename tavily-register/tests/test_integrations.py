@@ -99,6 +99,52 @@ class VerificationLinkTests(unittest.TestCase):
 
 
 class CorouterMailProviderTests(unittest.TestCase):
+    def test_mailbox_pool_filters_registered_accounts_once(self):
+        from corouter_mail_provider import (
+            CorouterMailboxPool,
+            CorouterMailProvider,
+            CorouterNoAvailableMailbox,
+        )
+
+        class CountingSession(FakeCorouterSession):
+            def __init__(self):
+                super().__init__()
+                self.account_reads = 0
+
+            def get(self, url, params=None, timeout=None):
+                if url.endswith("/mail/accounts"):
+                    self.account_reads += 1
+                    return FakeResponse(
+                        {
+                            "code": 0,
+                            "data": {
+                                "items": [
+                                    {"id": "used-1", "email": "used@example.com", "status": "active"},
+                                    {"id": "used-2", "email": "USED2@example.com", "status": "active"},
+                                    {"id": "fresh-1", "email": "fresh@example.com", "status": "active"},
+                                ],
+                                "pagination": {"pages": 1},
+                            },
+                        }
+                    )
+                return super().get(url, params=params, timeout=timeout)
+
+        session = CountingSession()
+        pool = CorouterMailboxPool({"used@example.com", "used2@example.com"})
+        with patch.multiple(
+            "corouter_mail_provider",
+            COROUTER_MAIL_API_KEY="test-api-key",
+            COROUTER_MAIL_TENANT_ID="tenant-1",
+            COROUTER_MAIL_GROUP_ID="",
+        ):
+            first = CorouterMailProvider(session=session, mailbox_pool=pool)
+            self.assertEqual(first.acquire_email(), "fresh@example.com")
+            second = CorouterMailProvider(session=session, mailbox_pool=pool)
+            with self.assertRaises(CorouterNoAvailableMailbox):
+                second.acquire_email()
+
+        self.assertEqual(session.account_reads, 1)
+
     def test_acquire_email_and_wait_for_link(self):
         from corouter_mail_provider import CorouterMailProvider
 

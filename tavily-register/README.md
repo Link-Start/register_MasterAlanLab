@@ -38,8 +38,10 @@ uv run python main.py --count 3 --mail-group "业务注册邮箱"
 ```
 
 程序识别到 `email-in-use`、邮箱已注册或注册成功后，会将邮箱写入
-`registered_emails.txt`。后续自动选邮箱会跳过记录中的地址；也可以用
-`--registered-emails PATH` 指定记录文件位置。
+`registered_emails.txt`。后续自动选邮箱会跳过记录中的地址；自动批量运行时会
+先读取一次 Emailbox 分组清单，在内存中过滤已注册邮箱并顺序选择可用账号，
+不会为了跳过历史邮箱反复轮询或消耗代理 IP；也可以用 `--registered-emails PATH`
+指定记录文件位置。
 
 Emailbox 接口是只读的：脚本从指定租户的 active 邮箱账号中轮换选择邮箱，
 然后查询 `inbox` 与 `junk` 中的最近邮件并提取 Tavily 验证链接。列表和正文

@@ -49,6 +49,22 @@ class CorouterMailTimeout(CorouterMailProviderError):
     """The mailbox deadline elapsed without a usable verification link."""
 
 
+class CorouterNoAvailableMailbox(CorouterMailProviderError):
+    """All active mailboxes in the selected group have already been used."""
+
+
+class CorouterMailboxPool:
+    """One account snapshot and selection cursor for a batch of registrations."""
+
+    def __init__(self, excluded_emails: set[str]):
+        self.excluded_emails = {
+            str(email or "").strip().casefold() for email in excluded_emails
+        }
+        self.accounts: list[dict] | None = None
+        self.next_index = 0
+        self.selected_emails: set[str] = set()
+
+
 _ACCOUNT_CURSOR_LOCK = threading.Lock()
 _ACCOUNT_CURSORS: dict[tuple[str, str], int] = {}
 
@@ -67,7 +83,12 @@ def _normalise_api_key(value: str) -> str:
 class CorouterMailProvider:
     """Read existing tenant mailboxes through mail.corouter.cc."""
 
-    def __init__(self, session=None, group_id: str | None = None):
+    def __init__(
+        self,
+        session=None,
+        group_id: str | None = None,
+        mailbox_pool: CorouterMailboxPool | None = None,
+    ):
         api_key = _normalise_api_key(COROUTER_MAIL_API_KEY)
         if not api_key:
             raise CorouterMailProviderError(
@@ -84,6 +105,7 @@ class CorouterMailProvider:
             group_id if group_id is not None else COROUTER_MAIL_GROUP_ID
         ).strip()
         self.group_id: str | None = None
+        self.mailbox_pool = mailbox_pool
         self.session = session or requests.Session()
         self.session.headers.update(
             {
@@ -226,21 +248,48 @@ class CorouterMailProvider:
         if self.email:
             return self.email
 
-        accounts = self._list_accounts()
-        usable = [
-            account
-            for account in accounts
-            if str(account.get("email") or "").strip()
-            and str(account.get("status") or "active").lower() == "active"
-        ]
+        pool = self.mailbox_pool
+        if pool is not None:
+            if pool.accounts is None:
+                pool.accounts = [
+                    account
+                    for account in self._list_accounts()
+                    if str(account.get("email") or "").strip()
+                    and str(account.get("status") or "active").lower() == "active"
+                ]
+            usable = pool.accounts
+        else:
+            usable = [
+                account
+                for account in self._list_accounts()
+                if str(account.get("email") or "").strip()
+                and str(account.get("status") or "active").lower() == "active"
+            ]
         if not usable:
+            if pool is not None:
+                raise CorouterNoAvailableMailbox("Emailbox 没有可用的 active 邮箱账号")
             raise CorouterMailProviderError("Emailbox 没有可用的 active 邮箱账号")
 
-        key = (self.base_url, self.tenant_id)
-        with _ACCOUNT_CURSOR_LOCK:
-            index = _ACCOUNT_CURSORS.get(key, 0) % len(usable)
-            _ACCOUNT_CURSORS[key] = index + 1
-        account = usable[index]
+        if pool is not None:
+            account = None
+            while pool.next_index < len(usable):
+                candidate = usable[pool.next_index]
+                pool.next_index += 1
+                address = str(candidate.get("email") or "").strip().casefold()
+                if address not in pool.excluded_emails and address not in pool.selected_emails:
+                    account = candidate
+                    pool.selected_emails.add(address)
+                    break
+            if account is None:
+                raise CorouterNoAvailableMailbox(
+                    "Emailbox 分组中没有未注册的 active 邮箱账号"
+                )
+        else:
+            key = (self.base_url, self.tenant_id)
+            with _ACCOUNT_CURSOR_LOCK:
+                index = _ACCOUNT_CURSORS.get(key, 0) % len(usable)
+                _ACCOUNT_CURSORS[key] = index + 1
+            account = usable[index]
         self.account_id = str(account.get("id") or "").strip() or None
         self.email = str(account.get("email") or "").strip()
         if not self.account_id:
@@ -469,6 +518,8 @@ __all__ = [
     "CorouterMailTransientError",
     "CorouterMailRecoveredWithoutLink",
     "CorouterMailTimeout",
+    "CorouterNoAvailableMailbox",
+    "CorouterMailboxPool",
     "EmailboxProvider",
     "EmailboxProviderError",
 ]
