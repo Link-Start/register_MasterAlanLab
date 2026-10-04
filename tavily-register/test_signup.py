@@ -1,3 +1,4 @@
+import csv
 import unittest
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -361,6 +362,11 @@ class BatchResumeTests(unittest.TestCase):
             )
             with open(keys_file, encoding="utf-8") as keys_handle:
                 saved_key = keys_handle.read().strip()
+            with open(f"{tmpdir}/accounts.csv", encoding="utf-8", newline="") as handle:
+                account, = list(csv.DictReader(handle))
+            self.assertEqual(account["email"], "fresh@example.com")
+            self.assertEqual(account["api_key"], "tvly-fresh-key")
+            self.assertEqual(account["password"], do_signup.call_args_list[1].kwargs["password"])
 
         self.assertEqual(create_provider.call_count, 2)
         self.assertEqual(do_signup.call_count, 2)
@@ -423,6 +429,11 @@ class BatchResumeTests(unittest.TestCase):
                 password="fixed-password",
                 proxy_api_url="http://proxy-api",
             )
+            with open(f"{tmpdir}/accounts.csv", encoding="utf-8", newline="") as handle:
+                account, = list(csv.DictReader(handle))
+            self.assertEqual(account["email"], "same@example.com")
+            self.assertEqual(account["password"], "fixed-password")
+            self.assertEqual(account["api_key"], "tvly-test-key")
 
         self.assertEqual(create_provider.call_count, 1)
         self.assertEqual(do_signup.call_count, 2)

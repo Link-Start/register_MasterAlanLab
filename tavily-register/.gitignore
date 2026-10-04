@@ -43,6 +43,8 @@ config.yaml
 
 # Project runtime output & logs
 api_keys.txt
+accounts.csv
+accounts*.csv
 failed.txt
 registered_emails.txt
 email.txt

@@ -85,10 +85,35 @@ uv run python main.py -n 20 --max-per-window 10 --window-seconds 3600
 
 ## 输出文件
 
-- `api_keys.txt`：成功记录（API Key 列表）
+- `api_keys.txt`：纯 API Key 列表，保留每行一个 Key 的原格式
+- `accounts.csv`：成功取得 Key 的账号明细，包含完整 Key、邮箱、Tavily 账号密码、保存时间、Key 的 SHA-256 指纹及取得方式
 - `failed.txt`：失败记录（邮箱与错误信息）
 - `registered_emails.txt`：已确认注册过的邮箱（本地忽略文件，自动去重）
 - `run.log`：运行日志（开始处理、成功、失败、进入 90 分钟等待、恢复时间等）
+
+### Key 与账号对应关系
+
+默认在 `api_keys.txt` 同目录追加保存 `accounts.csv`，也可单独指定路径：
+
+```bash
+uv run python main.py -n 10 --output api_keys.txt --accounts accounts.csv
+```
+
+账号明细示例（示例值）：
+
+```csv
+api_key,email,password,saved_at,key_sha256,source
+tvly-example,user@example.com,TavilyPassword123!,2026-10-04T12:00:00+08:00,<SHA-256>,email_verification
+```
+
+- CSV 带表头，追加时只写一次表头；逗号、引号等密码字符由 CSV 标准转义，读取后仍是原密码。可用表格软件按文本列导入查看。
+- `password` 是实际传给 Tavily 注册/登录的密码，**不是邮箱服务的登录密码**。
+- 随机密码和 `--password` 固定密码都会保存；注册直接取 Key、邮箱验证后取 Key、登录补救取 Key 三条成功路径均写入明细，`--retry` 使用相同保存逻辑。
+- `source` 分别为 `signup`、`email_verification`、`login_recovery`；`saved_at` 是保存时间（带时区），不代表历史账号的首次注册时间。
+- 明细先写入并刷新到磁盘，再导出纯 Key。写入出错会停止批次；若纯 Key 导出出错，已写入的明细仍保留。
+- 普通日志只新增 `key_sha256` 指纹，终端不再打印完整密码。以后可用完整 Key 或指纹关联邮箱，不依赖行号或注册顺序。
+- 明细是明文凭据，请妥善备份；默认文件已被 Git 忽略，POSIX 系统下账号明细和 Key 输出权限为 `0600`。自定义明细文件名时也应加入忽略规则。
+- 此功能从新运行取得的 Key 开始记录，旧 Key 与历史密码仍需要原始对应记录。
 
 ## 常见问题
 

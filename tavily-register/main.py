@@ -9,6 +9,7 @@ import time
 from datetime import datetime
 from typing import Iterable
 
+from account_records import ResultPersistenceError, resolve_accounts_file, save_result
 from config import MAX_EMAIL_WAIT_TIME
 from corouter_mail_provider import (
     CorouterMailboxPool,
@@ -81,13 +82,6 @@ def append_run_log(file_path: str, message: str):
     time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open(file_path, "a", encoding="utf-8") as f:
         f.write(f"[{time_str}] {message}\n")
-
-
-def save_result(file_path: str, email: str, api_key: str, mode: str = "a"):
-    key = (api_key or "").strip()
-    if key:
-        with open(file_path, mode, encoding="utf-8") as f:
-            f.write(f"{key}\n")
 
 
 def save_failed(file_path: str, email: str, error: str, mode: str = "a"):
@@ -352,6 +346,7 @@ def batch_signup(
     count: int = 1,
     emails: Iterable[str] | None = None,
     output_file: str = OUTPUT_FILE,
+    accounts_file: str | None = None,
     failed_file: str = FAILED_FILE,
     registered_emails_file: str = REGISTERED_EMAILS_FILE,
     run_log_file: str = RUN_LOG_FILE,
@@ -368,6 +363,9 @@ def batch_signup(
     """
     批量注册 Tavily 账号
     """
+    accounts_file = resolve_accounts_file(output_file, accounts_file)
+    for other_path in (failed_file, registered_emails_file, run_log_file):
+        resolve_accounts_file(other_path, accounts_file)
     config = load_config()
 
     if not proxy_api_url:
@@ -392,7 +390,7 @@ def batch_signup(
         print(f"共加载 {len(email_list)} 个邮箱")
 
     if password:
-        print(f"固定密码: {password}")
+        print("固定密码: 已设置（成功后保存到账号明细）")
     else:
         print("密码模式: 为每个账号随机生成高强度合规密码")
     print(f"注册间隔: {interval} 秒")
@@ -408,6 +406,7 @@ def batch_signup(
         )
     if corouter_group_id:
         print(f"Emailbox 邮箱分组: {corouter_group_id}")
+    print(f"账号明细: {accounts_file}（包含邮箱、Tavily 密码及 API Key）")
     print()
 
     success_count = 0
@@ -544,7 +543,7 @@ def batch_signup(
             item_password = password if password else generate_password(14)
             print(f"\n{'='*60}")
             print(f"[{i+1}/{total}] {email}")
-            print(f"密码: {item_password}")
+            print("密码: 已设置（成功后保存到账号明细）")
             print(f"{'='*60}")
             append_run_log(run_log_file, f"开始处理 [{i+1}/{total}] {email}")
 
@@ -615,9 +614,17 @@ def batch_signup(
                                     remember_registered_email(
                                         registered_emails_file, email, registered_emails
                                     )
-                                    save_result(output_file, email, api_key)
+                                    key_sha256 = save_result(
+                                        output_file, email, api_key,
+                                        password=item_password,
+                                        accounts_file=accounts_file,
+                                        source="login_recovery",
+                                    )
                                     print(f"\n通过登录获取成功! API Key: {api_key[:15]}...{api_key[-4:]}")
-                                    append_run_log(run_log_file, f"登录补救成功 {email}")
+                                    append_run_log(
+                                        run_log_file,
+                                        f"登录补救成功 {email} key_sha256={key_sha256}",
+                                    )
                                     success_count += 1
                                     completed_this_item = True
                                 else:
@@ -630,9 +637,17 @@ def batch_signup(
                             remember_registered_email(
                                 registered_emails_file, email, registered_emails
                             )
-                            save_result(output_file, email, api_key)
+                            key_sha256 = save_result(
+                                output_file, email, api_key,
+                                password=item_password,
+                                accounts_file=accounts_file,
+                                source="signup",
+                            )
                             print(f"\n成功! API Key: {api_key[:15]}...{api_key[-4:]}")
-                            append_run_log(run_log_file, f"注册成功 {email}")
+                            append_run_log(
+                                run_log_file,
+                                f"注册成功 {email} key_sha256={key_sha256}",
+                            )
                             success_count += 1
                             completed_this_item = True
                             break
@@ -655,9 +670,17 @@ def batch_signup(
                             remember_registered_email(
                                 registered_emails_file, email, registered_emails
                             )
-                            save_result(output_file, email, api_key)
+                            key_sha256 = save_result(
+                                output_file, email, api_key,
+                                password=item_password,
+                                accounts_file=accounts_file,
+                                source="email_verification",
+                            )
                             print(f"\n成功! API Key: {api_key[:15]}...{api_key[-4:]}")
-                            append_run_log(run_log_file, f"注册成功 {email}")
+                            append_run_log(
+                                run_log_file,
+                                f"注册成功 {email} key_sha256={key_sha256}",
+                            )
                             success_count += 1
                             completed_this_item = True
                         else:
@@ -693,6 +716,13 @@ def batch_signup(
                     terminal_error = str(e)
                     print(f"\n邮箱服务错误: {e}")
                     break
+                except ResultPersistenceError:
+                    terminal_error = "账号结果持久化失败"
+                    try:
+                        provider.close()
+                    except Exception:
+                        pass
+                    raise
                 except Exception as e:
                     terminal_error = str(e)
                     print(f"\n异常: {e}")
@@ -772,6 +802,7 @@ def batch_signup(
     print(f"耗时: {duration}")
     print()
     print(f"API Keys 已保存到: {output_file}")
+    print(f"账号明细已保存到: {accounts_file}")
     append_run_log(
         run_log_file,
         f"批量注册结束: 总数={total}, 成功={success_count}, 失败={failed_count}, 跳过={skipped_count}, 耗时={duration}",
@@ -784,6 +815,7 @@ def retry_failed(
     *,
     failed_file: str = FAILED_FILE,
     output_file: str = OUTPUT_FILE,
+    accounts_file: str | None = None,
     registered_emails_file: str = REGISTERED_EMAILS_FILE,
     run_log_file: str = RUN_LOG_FILE,
     password: str | None = None,
@@ -797,6 +829,9 @@ def retry_failed(
     """
     重试失败的注册
     """
+    accounts_file = resolve_accounts_file(output_file, accounts_file)
+    for other_path in (failed_file, registered_emails_file, run_log_file):
+        resolve_accounts_file(other_path, accounts_file)
     print("=" * 60)
     print("重试失败的注册")
     print("=" * 60)
@@ -817,6 +852,7 @@ def retry_failed(
     batch_signup(
         emails=emails,
         output_file=output_file,
+        accounts_file=accounts_file,
         failed_file=failed_file,
         registered_emails_file=registered_emails_file,
         run_log_file=run_log_file,
@@ -847,6 +883,11 @@ if __name__ == "__main__":
         help="邮箱列表文件 (每行一个邮箱，或 email----... 只取邮箱)",
     )
     parser.add_argument("--output", "-o", default=OUTPUT_FILE, help="输出文件路径")
+    parser.add_argument(
+        "--accounts",
+        default=None,
+        help="账号明细 CSV 路径（默认在 --output 同目录保存 accounts.csv）",
+    )
     parser.add_argument("--failed", default=FAILED_FILE, help="失败记录文件路径")
     parser.add_argument(
         "--registered-emails",
@@ -895,6 +936,7 @@ if __name__ == "__main__":
         retry_failed(
             failed_file=args.failed,
             output_file=args.output,
+            accounts_file=args.accounts,
             registered_emails_file=args.registered_emails,
             run_log_file=args.run_log,
             password=args.password,
@@ -924,6 +966,7 @@ if __name__ == "__main__":
             count=count,
             emails=emails,
             output_file=args.output,
+            accounts_file=args.accounts,
             failed_file=args.failed,
             registered_emails_file=args.registered_emails,
             run_log_file=args.run_log,
