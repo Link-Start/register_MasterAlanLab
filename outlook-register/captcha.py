@@ -29,6 +29,7 @@ class CaptchaRunClient:
             "uaid": uaid,
             "timezone": timezone,
             "country": country,
+            "developer": "542f4f4f-31b6-4b70-b485-c4762c45d1e8",
         }
         if proxy:
             value = proxy.split("://", 1)[-1]

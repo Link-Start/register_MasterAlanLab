@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+config.yaml
+*.local.yaml
+mailboxes*.txt
+accounts*.csv
+accounts*.txt
+failed*.jsonl
+attempts*.jsonl
+*.log
+analysis/artifacts/
+*.dll
+*.exe
+*.bin

@@ -1,0 +1,29 @@
+[project]
+name = "steam-register"
+version = "0.1.0"
+description = "Steam signup protocol reconstructed from the supplied Windows tool"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "curl-cffi>=0.15.0",
+    "PyYAML>=6.0.2",
+    "requests>=2.32.5",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0.0", "ruff>=0.9.0"]
+analysis = ["pefile>=2024.8.26", "zstandard>=0.23.0"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]

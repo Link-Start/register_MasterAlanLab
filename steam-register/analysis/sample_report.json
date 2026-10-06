@@ -1,0 +1,1240 @@
+{
+  "sample_sha256": "c1724644ccfe6ce5598df9c6cbb3aa537727bee916da409962aba091119cda4c",
+  "sample_size": 29343744,
+  "format": "PE32+ x86-64 / Nuitka KAY onefile / Zstandard / Python 3.10",
+  "payload_offset": "0x26bd8",
+  "payload_size": 29183056,
+  "uncompressed_size": 103235661,
+  "file_count": 683,
+  "main_dll_size": 18105344,
+  "constant_resource_offset": "0xbd7fd8",
+  "constant_resource_size": 5670577,
+  "modules": [
+    {
+      "name": ".bytecode",
+      "size": 4697388,
+      "main_dll_offset": "0xbd7fee"
+    },
+    {
+      "name": "",
+      "size": 18361,
+      "main_dll_offset": "0x1052d1f"
+    },
+    {
+      "name": "PySide2-postLoad",
+      "size": 862,
+      "main_dll_offset": "0x10574ed"
+    },
+    {
+      "name": "PySide2-preLoad",
+      "size": 142,
+      "main_dll_offset": "0x105785f"
+    },
+    {
+      "name": "PySide2.QtCore-postLoad",
+      "size": 258,
+      "main_dll_offset": "0x1057909"
+    },
+    {
+      "name": "PySide2",
+      "size": 1675,
+      "main_dll_offset": "0x1057a17"
+    },
+    {
+      "name": "__main__",
+      "size": 7432,
+      "main_dll_offset": "0x10580af",
+      "constant_count": 424
+    },
+    {
+      "name": "__parents_main__-preLoad",
+      "size": 162,
+      "main_dll_offset": "0x1059dd4"
+    },
+    {
+      "name": "__parents_main__",
+      "size": 7494,
+      "main_dll_offset": "0x1059e8b"
+    },
+    {
+      "name": "bcrypt",
+      "size": 557,
+      "main_dll_offset": "0x105bbdc"
+    },
+    {
+      "name": "brotli",
+      "size": 1322,
+      "main_dll_offset": "0x105be14"
+    },
+    {
+      "name": "certifi",
+      "size": 209,
+      "main_dll_offset": "0x105c34a"
+    },
+    {
+      "name": "certifi.core",
+      "size": 346,
+      "main_dll_offset": "0x105c42c"
+    },
+    {
+      "name": "charset_normalizer.api",
+      "size": 8070,
+      "main_dll_offset": "0x105c5a1"
+    },
+    {
+      "name": "charset_normalizer.cd",
+      "size": 5501,
+      "main_dll_offset": "0x105e541"
+    },
+    {
+      "name": "charset_normalizer",
+      "size": 1576,
+      "main_dll_offset": "0x105fad5"
+    },
+    {
+      "name": "charset_normalizer.constant",
+      "size": 18260,
+      "main_dll_offset": "0x106011d"
+    },
+    {
+      "name": "charset_normalizer.legacy",
+      "size": 1204,
+      "main_dll_offset": "0x106488f"
+    },
+    {
+      "name": "charset_normalizer.models",
+      "size": 5867,
+      "main_dll_offset": "0x1064d61"
+    },
+    {
+      "name": "charset_normalizer.utils",
+      "size": 4348,
+      "main_dll_offset": "0x1066469"
+    },
+    {
+      "name": "charset_normalizer.version",
+      "size": 153,
+      "main_dll_offset": "0x1067584"
+    },
+    {
+      "name": "cryptography.__about__",
+      "size": 232,
+      "main_dll_offset": "0x1067638"
+    },
+    {
+      "name": "cryptography",
+      "size": 321,
+      "main_dll_offset": "0x1067731"
+    },
+    {
+      "name": "cryptography.exceptions",
+      "size": 766,
+      "main_dll_offset": "0x106788e"
+    },
+    {
+      "name": "cryptography.hazmat._oid",
+      "size": 6604,
+      "main_dll_offset": "0x1067ba9"
+    },
+    {
+      "name": "cryptography.hazmat.backends",
+      "size": 453,
+      "main_dll_offset": "0x1069596"
+    },
+    {
+      "name": "cryptography.hazmat.backends.openssl.backend",
+      "size": 4189,
+      "main_dll_offset": "0x106978c"
+    },
+    {
+      "name": "cryptography.hazmat.backends.openssl",
+      "size": 527,
+      "main_dll_offset": "0x106a812"
+    },
+    {
+      "name": "cryptography.hazmat.bindings",
+      "size": 337,
+      "main_dll_offset": "0x106aa42"
+    },
+    {
+      "name": "cryptography.hazmat.bindings.openssl._conditional",
+      "size": 2804,
+      "main_dll_offset": "0x106abc9"
+    },
+    {
+      "name": "cryptography.hazmat.bindings.openssl.binding",
+      "size": 2174,
+      "main_dll_offset": "0x106b6ee"
+    },
+    {
+      "name": "cryptography.hazmat.bindings.openssl",
+      "size": 448,
+      "main_dll_offset": "0x106bf95"
+    },
+    {
+      "name": "cryptography.hazmat",
+      "size": 251,
+      "main_dll_offset": "0x106c16d"
+    },
+    {
+      "name": "cryptography.hazmat.decrepit.ciphers.algorithms",
+      "size": 946,
+      "main_dll_offset": "0x106c29c"
+    },
+    {
+      "name": "cryptography.hazmat.decrepit.ciphers",
+      "size": 461,
+      "main_dll_offset": "0x106c677"
+    },
+    {
+      "name": "cryptography.hazmat.decrepit",
+      "size": 350,
+      "main_dll_offset": "0x106c865"
+    },
+    {
+      "name": "cryptography.hazmat.primitives._asymmetric",
+      "size": 507,
+      "main_dll_offset": "0x106c9f2"
+    },
+    {
+      "name": "cryptography.hazmat.primitives._cipheralgorithm",
+      "size": 1112,
+      "main_dll_offset": "0x106cc21"
+    },
+    {
+      "name": "cryptography.hazmat.primitives._serialization",
+      "size": 2848,
+      "main_dll_offset": "0x106d0ab"
+    },
+    {
+      "name": "cryptography.hazmat.primitives.asymmetric",
+      "size": 478,
+      "main_dll_offset": "0x106dbf9"
+    },
+    {
+      "name": "cryptography.hazmat.primitives.asymmetric.dh",
+      "size": 2749,
+      "main_dll_offset": "0x106de08"
+    },
+    {
+      "name": "cryptography.hazmat.primitives.asymmetric.dsa",
+      "size": 3091,
+      "main_dll_offset": "0x106e8f7"
+    },
+    {
+      "name": "cryptography.hazmat.primitives.asymmetric.ec",
+      "size": 5698,
+      "main_dll_offset": "0x106f53b"
+    },
+    {
+      "name": "cryptography.hazmat.primitives.asymmetric.ed25519",
+      "size": 2540,
+      "main_dll_offset": "0x1070bb3"
+    },
+    {
+      "name": "cryptography.hazmat.primitives.asymmetric.ed448",
+      "size": 2494,
+      "main_dll_offset": "0x10715d3"
+    },
+    {
+      "name": "cryptography.hazmat.primitives.asymmetric.padding",
+      "size": 1748,
+      "main_dll_offset": "0x1071fc7"
+    },
+    {
+      "name": "cryptography.hazmat.primitives.asymmetric.rsa",
+      "size": 4818,
+      "main_dll_offset": "0x10726cd"
+    },
+    {
+      "name": "cryptography.hazmat.primitives.asymmetric.types",
+      "size": 1305,
+      "main_dll_offset": "0x10739d3"
+    },
+    {
+      "name": "cryptography.hazmat.primitives.asymmetric.utils",
+      "size": 590,
+      "main_dll_offset": "0x1073f20"
+    },
+    {
+      "name": "cryptography.hazmat.primitives.asymmetric.x25519",
+      "size": 2481,
+      "main_dll_offset": "0x10741a3"
+    },
+    {
+      "name": "cryptography.hazmat.primitives.asymmetric.x448",
+      "size": 2431,
+      "main_dll_offset": "0x1074b87"
+    },
+    {
+      "name": "cryptography.hazmat.primitives.ciphers.algorithms",
+      "size": 2358,
+      "main_dll_offset": "0x107553c"
+    },
+    {
+      "name": "cryptography.hazmat.primitives.ciphers.base",
+      "size": 2829,
+      "main_dll_offset": "0x1075ea2"
+    },
+    {
+      "name": "cryptography.hazmat.primitives.ciphers",
+      "size": 954,
+      "main_dll_offset": "0x10769da"
+    },
+    {
+      "name": "cryptography.hazmat.primitives.ciphers.modes",
+      "size": 3575,
+      "main_dll_offset": "0x1076dc5"
+    },
+    {
+      "name": "cryptography.hazmat.primitives",
+      "size": 347,
+      "main_dll_offset": "0x1077bdf"
+    },
+    {
+      "name": "cryptography.hazmat.primitives.constant_time",
+      "size": 232,
+      "main_dll_offset": "0x1077d6b"
+    },
+    {
+      "name": "cryptography.hazmat.primitives.hashes",
+      "size": 2472,
+      "main_dll_offset": "0x1077e7d"
+    },
+    {
+      "name": "cryptography.hazmat.primitives.serialization.base",
+      "size": 383,
+      "main_dll_offset": "0x107885b"
+    },
+    {
+      "name": "cryptography.hazmat.primitives.serialization",
+      "size": 2147,
+      "main_dll_offset": "0x1078a0b"
+    },
+    {
+      "name": "cryptography.hazmat.primitives.serialization.ssh",
+      "size": 18904,
+      "main_dll_offset": "0x10792a3"
+    },
+    {
+      "name": "cryptography.utils",
+      "size": 1993,
+      "main_dll_offset": "0x107dc92"
+    },
+    {
+      "name": "cryptography.x509.base",
+      "size": 12097,
+      "main_dll_offset": "0x107e476"
+    },
+    {
+      "name": "cryptography.x509.certificate_transparency",
+      "size": 766,
+      "main_dll_offset": "0x10813e6"
+    },
+    {
+      "name": "cryptography.x509",
+      "size": 7903,
+      "main_dll_offset": "0x10816fa"
+    },
+    {
+      "name": "cryptography.x509.extensions",
+      "size": 29058,
+      "main_dll_offset": "0x10835fa"
+    },
+    {
+      "name": "cryptography.x509.general_name",
+      "size": 3337,
+      "main_dll_offset": "0x108a79f"
+    },
+    {
+      "name": "cryptography.x509.name",
+      "size": 7102,
+      "main_dll_offset": "0x108b4c3"
+    },
+    {
+      "name": "cryptography.x509.oid",
+      "size": 864,
+      "main_dll_offset": "0x108d09b"
+    },
+    {
+      "name": "cryptography.x509.verification",
+      "size": 462,
+      "main_dll_offset": "0x108d41e"
+    },
+    {
+      "name": "curl_cffi.__version__",
+      "size": 354,
+      "main_dll_offset": "0x108d606"
+    },
+    {
+      "name": "curl_cffi._asyncio_selector",
+      "size": 3952,
+      "main_dll_offset": "0x108d788"
+    },
+    {
+      "name": "curl_cffi.aio",
+      "size": 4913,
+      "main_dll_offset": "0x108e70a"
+    },
+    {
+      "name": "curl_cffi",
+      "size": 2174,
+      "main_dll_offset": "0x108fa49"
+    },
+    {
+      "name": "curl_cffi.const",
+      "size": 11416,
+      "main_dll_offset": "0x10902db"
+    },
+    {
+      "name": "curl_cffi.curl",
+      "size": 12615,
+      "main_dll_offset": "0x1092f86"
+    },
+    {
+      "name": "curl_cffi.fingerprints",
+      "size": 8992,
+      "main_dll_offset": "0x10960e8"
+    },
+    {
+      "name": "curl_cffi.requests.cache",
+      "size": 5952,
+      "main_dll_offset": "0x1098425"
+    },
+    {
+      "name": "curl_cffi.requests",
+      "size": 5207,
+      "main_dll_offset": "0x1099b7c"
+    },
+    {
+      "name": "curl_cffi.requests.cookies",
+      "size": 5011,
+      "main_dll_offset": "0x109aff2"
+    },
+    {
+      "name": "curl_cffi.requests.errors",
+      "size": 311,
+      "main_dll_offset": "0x109c3a3"
+    },
+    {
+      "name": "curl_cffi.requests.exceptions",
+      "size": 3341,
+      "main_dll_offset": "0x109c4fc"
+    },
+    {
+      "name": "curl_cffi.requests.headers",
+      "size": 3655,
+      "main_dll_offset": "0x109d228"
+    },
+    {
+      "name": "curl_cffi.requests.impersonate",
+      "size": 5519,
+      "main_dll_offset": "0x109e092"
+    },
+    {
+      "name": "curl_cffi.requests.models",
+      "size": 6236,
+      "main_dll_offset": "0x109f63f"
+    },
+    {
+      "name": "curl_cffi.requests.session",
+      "size": 35246,
+      "main_dll_offset": "0x10a0eba"
+    },
+    {
+      "name": "curl_cffi.requests.streams",
+      "size": 2698,
+      "main_dll_offset": "0x10a9887"
+    },
+    {
+      "name": "curl_cffi.requests.utils",
+      "size": 13072,
+      "main_dll_offset": "0x10aa32e"
+    },
+    {
+      "name": "curl_cffi.requests.websockets",
+      "size": 32774,
+      "main_dll_offset": "0x10ad660"
+    },
+    {
+      "name": "curl_cffi.utils",
+      "size": 424,
+      "main_dll_offset": "0x10b567a"
+    },
+    {
+      "name": "getmail",
+      "size": 2671,
+      "main_dll_offset": "0x10b582e",
+      "constant_count": 140
+    },
+    {
+      "name": "idna",
+      "size": 1060,
+      "main_dll_offset": "0x10b62a6"
+    },
+    {
+      "name": "idna.core",
+      "size": 3718,
+      "main_dll_offset": "0x10b66d8"
+    },
+    {
+      "name": "idna.idnadata",
+      "size": 22344,
+      "main_dll_offset": "0x10b7570"
+    },
+    {
+      "name": "idna.intranges",
+      "size": 1014,
+      "main_dll_offset": "0x10bcccb"
+    },
+    {
+      "name": "idna.package_data",
+      "size": 94,
+      "main_dll_offset": "0x10bd0d7"
+    },
+    {
+      "name": "idna.uts46data",
+      "size": 90764,
+      "main_dll_offset": "0x10bd148"
+    },
+    {
+      "name": "multiprocessing-postLoad",
+      "size": 281,
+      "main_dll_offset": "0x10d33f1"
+    },
+    {
+      "name": "multiprocessing-preLoad",
+      "size": 184,
+      "main_dll_offset": "0x10d3526"
+    },
+    {
+      "name": "orjson",
+      "size": 533,
+      "main_dll_offset": "0x10d35e9"
+    },
+    {
+      "name": "requests.__version__",
+      "size": 377,
+      "main_dll_offset": "0x10d3817"
+    },
+    {
+      "name": "requests._internal_utils",
+      "size": 1056,
+      "main_dll_offset": "0x10d39ad"
+    },
+    {
+      "name": "requests.adapters",
+      "size": 16154,
+      "main_dll_offset": "0x10d3de3"
+    },
+    {
+      "name": "requests.api",
+      "size": 5653,
+      "main_dll_offset": "0x10d7d0e"
+    },
+    {
+      "name": "requests.auth",
+      "size": 3594,
+      "main_dll_offset": "0x10d9335"
+    },
+    {
+      "name": "requests.certs",
+      "size": 422,
+      "main_dll_offset": "0x10da152"
+    },
+    {
+      "name": "requests.compat",
+      "size": 1349,
+      "main_dll_offset": "0x10da30c"
+    },
+    {
+      "name": "requests",
+      "size": 2737,
+      "main_dll_offset": "0x10da85e"
+    },
+    {
+      "name": "requests.cookies",
+      "size": 10928,
+      "main_dll_offset": "0x10db324"
+    },
+    {
+      "name": "requests.exceptions",
+      "size": 3101,
+      "main_dll_offset": "0x10dddec"
+    },
+    {
+      "name": "requests.hooks",
+      "size": 431,
+      "main_dll_offset": "0x10dea1c"
+    },
+    {
+      "name": "requests.models",
+      "size": 13684,
+      "main_dll_offset": "0x10debdf"
+    },
+    {
+      "name": "requests.packages",
+      "size": 211,
+      "main_dll_offset": "0x10e2169"
+    },
+    {
+      "name": "requests.sessions",
+      "size": 13034,
+      "main_dll_offset": "0x10e2252"
+    },
+    {
+      "name": "requests.status_codes",
+      "size": 3207,
+      "main_dll_offset": "0x10e5556"
+    },
+    {
+      "name": "requests.structures",
+      "size": 2310,
+      "main_dll_offset": "0x10e61f5"
+    },
+    {
+      "name": "requests.utils",
+      "size": 14036,
+      "main_dll_offset": "0x10e6b0e"
+    },
+    {
+      "name": "shiboken2",
+      "size": 367,
+      "main_dll_offset": "0x10ea1f0"
+    },
+    {
+      "name": "socks",
+      "size": 10460,
+      "main_dll_offset": "0x10ea369"
+    },
+    {
+      "name": "typing_extensions",
+      "size": 62080,
+      "main_dll_offset": "0x10ecc5b"
+    },
+    {
+      "name": "tzdata",
+      "size": 181,
+      "main_dll_offset": "0x10fbee6"
+    },
+    {
+      "name": "tzdata.zoneinfo.Africa",
+      "size": 307,
+      "main_dll_offset": "0x10fbfb6"
+    },
+    {
+      "name": "tzdata.zoneinfo.America",
+      "size": 312,
+      "main_dll_offset": "0x10fc105"
+    },
+    {
+      "name": "tzdata.zoneinfo.Antarctica",
+      "size": 327,
+      "main_dll_offset": "0x10fc25c"
+    },
+    {
+      "name": "tzdata.zoneinfo.Arctic",
+      "size": 307,
+      "main_dll_offset": "0x10fc3be"
+    },
+    {
+      "name": "tzdata.zoneinfo.Asia",
+      "size": 297,
+      "main_dll_offset": "0x10fc50a"
+    },
+    {
+      "name": "tzdata.zoneinfo.Atlantic",
+      "size": 317,
+      "main_dll_offset": "0x10fc650"
+    },
+    {
+      "name": "tzdata.zoneinfo.Australia",
+      "size": 322,
+      "main_dll_offset": "0x10fc7ab"
+    },
+    {
+      "name": "tzdata.zoneinfo.Brazil",
+      "size": 307,
+      "main_dll_offset": "0x10fc908"
+    },
+    {
+      "name": "tzdata.zoneinfo.Canada",
+      "size": 307,
+      "main_dll_offset": "0x10fca56"
+    },
+    {
+      "name": "tzdata.zoneinfo.Chile",
+      "size": 302,
+      "main_dll_offset": "0x10fcba3"
+    },
+    {
+      "name": "tzdata.zoneinfo.Etc",
+      "size": 292,
+      "main_dll_offset": "0x10fcce9"
+    },
+    {
+      "name": "tzdata.zoneinfo.Europe",
+      "size": 307,
+      "main_dll_offset": "0x10fce28"
+    },
+    {
+      "name": "tzdata.zoneinfo.Indian",
+      "size": 307,
+      "main_dll_offset": "0x10fcf76"
+    },
+    {
+      "name": "tzdata.zoneinfo.Mexico",
+      "size": 307,
+      "main_dll_offset": "0x10fd0c4"
+    },
+    {
+      "name": "tzdata.zoneinfo.Pacific",
+      "size": 312,
+      "main_dll_offset": "0x10fd213"
+    },
+    {
+      "name": "tzdata.zoneinfo.US",
+      "size": 287,
+      "main_dll_offset": "0x10fd362"
+    },
+    {
+      "name": "tzdata.zoneinfo",
+      "size": 222,
+      "main_dll_offset": "0x10fd495"
+    },
+    {
+      "name": "ui",
+      "size": 2362,
+      "main_dll_offset": "0x10fd57a"
+    },
+    {
+      "name": "urllib3._base_connection",
+      "size": 758,
+      "main_dll_offset": "0x10fded1"
+    },
+    {
+      "name": "urllib3._collections",
+      "size": 8262,
+      "main_dll_offset": "0x10fe1e0"
+    },
+    {
+      "name": "urllib3._request_methods",
+      "size": 7831,
+      "main_dll_offset": "0x1100243"
+    },
+    {
+      "name": "urllib3._version",
+      "size": 174,
+      "main_dll_offset": "0x11020ef"
+    },
+    {
+      "name": "urllib3.connection",
+      "size": 16293,
+      "main_dll_offset": "0x11021b4"
+    },
+    {
+      "name": "urllib3.connectionpool",
+      "size": 21291,
+      "main_dll_offset": "0x1106174"
+    },
+    {
+      "name": "urllib3",
+      "size": 5383,
+      "main_dll_offset": "0x110b4ab"
+    },
+    {
+      "name": "urllib3.contrib",
+      "size": 222,
+      "main_dll_offset": "0x110c9c6"
+    },
+    {
+      "name": "urllib3.contrib.pyopenssl",
+      "size": 9000,
+      "main_dll_offset": "0x110cac2"
+    },
+    {
+      "name": "urllib3.contrib.socks",
+      "size": 3867,
+      "main_dll_offset": "0x110ee04"
+    },
+    {
+      "name": "urllib3.exceptions",
+      "size": 6580,
+      "main_dll_offset": "0x110fd36"
+    },
+    {
+      "name": "urllib3.fields",
+      "size": 7279,
+      "main_dll_offset": "0x11116fd"
+    },
+    {
+      "name": "urllib3.filepost",
+      "size": 1393,
+      "main_dll_offset": "0x1113381"
+    },
+    {
+      "name": "urllib3.http2.connection",
+      "size": 6212,
+      "main_dll_offset": "0x111390f"
+    },
+    {
+      "name": "urllib3.http2",
+      "size": 886,
+      "main_dll_offset": "0x1115165"
+    },
+    {
+      "name": "urllib3.http2.probe",
+      "size": 999,
+      "main_dll_offset": "0x11154f3"
+    },
+    {
+      "name": "urllib3.poolmanager",
+      "size": 13552,
+      "main_dll_offset": "0x11158f2"
+    },
+    {
+      "name": "urllib3.response",
+      "size": 17492,
+      "main_dll_offset": "0x1118df7"
+    },
+    {
+      "name": "urllib3.util.connection",
+      "size": 2206,
+      "main_dll_offset": "0x111d267"
+    },
+    {
+      "name": "urllib3.util",
+      "size": 1172,
+      "main_dll_offset": "0x111db16"
+    },
+    {
+      "name": "urllib3.util.proxy",
+      "size": 673,
+      "main_dll_offset": "0x111dfc1"
+    },
+    {
+      "name": "urllib3.util.request",
+      "size": 4400,
+      "main_dll_offset": "0x111e27b"
+    },
+    {
+      "name": "urllib3.util.response",
+      "size": 1438,
+      "main_dll_offset": "0x111f3c5"
+    },
+    {
+      "name": "urllib3.util.retry",
+      "size": 11250,
+      "main_dll_offset": "0x111f97a"
+    },
+    {
+      "name": "urllib3.util.ssl_",
+      "size": 9056,
+      "main_dll_offset": "0x1122582"
+    },
+    {
+      "name": "urllib3.util.ssl_match_hostname",
+      "size": 2336,
+      "main_dll_offset": "0x1124906"
+    },
+    {
+      "name": "urllib3.util.ssltransport",
+      "size": 4942,
+      "main_dll_offset": "0x1125244"
+    },
+    {
+      "name": "urllib3.util.timeout",
+      "size": 7458,
+      "main_dll_offset": "0x11265ab"
+    },
+    {
+      "name": "urllib3.util.url",
+      "size": 6739,
+      "main_dll_offset": "0x11282e2"
+    },
+    {
+      "name": "urllib3.util.util",
+      "size": 530,
+      "main_dll_offset": "0x1129d4b"
+    },
+    {
+      "name": "urllib3.util.wait",
+      "size": 1116,
+      "main_dll_offset": "0x1129f73"
+    },
+    {
+      "name": "zstandard.backend_cffi",
+      "size": 87030,
+      "main_dll_offset": "0x112a3ea"
+    },
+    {
+      "name": "zstandard",
+      "size": 3739,
+      "main_dll_offset": "0x113f7ee"
+    }
+  ],
+  "protocol_constants": [
+    {
+      "module": "__main__",
+      "index": 60,
+      "main_dll_offset": "0x10583da",
+      "value": {
+        "Host": "store.steampowered.com",
+        "Accept": "text/javascript, text/html, application/xml, text/xml, */*",
+        "Content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "Origin": "https://store.steampowered.com",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+        "X-Prototype-Version": "1.7",
+        "X-Requested-With": "XMLHttpRequest",
+        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Dest": "empty",
+        "Referer": "https://store.steampowered.com/join/",
+        "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7"
+      }
+    },
+    {
+      "module": "__main__",
+      "index": 61,
+      "main_dll_offset": "0x105860e",
+      "value": {
+        "count": 1,
+        "hcaptcha": 1
+      }
+    },
+    {
+      "module": "__main__",
+      "index": 64,
+      "main_dll_offset": "0x1058628",
+      "value": [
+        "https://store.steampowered.com/join/refreshcaptcha"
+      ]
+    },
+    {
+      "module": "__main__",
+      "index": 66,
+      "main_dll_offset": "0x1058678",
+      "value": "gid"
+    },
+    {
+      "module": "__main__",
+      "index": 67,
+      "main_dll_offset": "0x105867d",
+      "value": "sitekey"
+    },
+    {
+      "module": "__main__",
+      "index": 68,
+      "main_dll_offset": "0x1058686",
+      "value": {
+        "Host": "store.steampowered.com",
+        "X-Prototype-Version": "1.7",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "sec-ch-ua": "\"Chromium\";v=\"146\", \"Google Chrome\";v=\"146\", \"Not?A_Brand\";v=\"24\"",
+        "sec-ch-ua-mobile": "?0",
+        "X-Requested-With": "XMLHttpRequest",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+        "Accept": "text/javascript, text/html, application/xml, text/xml, */*",
+        "Content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "Origin": "https://store.steampowered.com",
+        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Dest": "empty",
+        "Referer": "https://store.steampowered.com/join/",
+        "Accept-Language": "zh-CN,zh;q=0.9"
+      }
+    },
+    {
+      "module": "__main__",
+      "index": 69,
+      "main_dll_offset": "0x1058928",
+      "value": "email"
+    },
+    {
+      "module": "__main__",
+      "index": 70,
+      "main_dll_offset": "0x105892f",
+      "value": "captchagid"
+    },
+    {
+      "module": "__main__",
+      "index": 71,
+      "main_dll_offset": "0x105893b",
+      "value": "captcha_text"
+    },
+    {
+      "module": "__main__",
+      "index": 72,
+      "main_dll_offset": "0x1058949",
+      "value": "elang"
+    },
+    {
+      "module": "__main__",
+      "index": 74,
+      "main_dll_offset": "0x1058952",
+      "value": "init_id"
+    },
+    {
+      "module": "__main__",
+      "index": 77,
+      "main_dll_offset": "0x105896a",
+      "value": "guest"
+    },
+    {
+      "module": "__main__",
+      "index": 79,
+      "main_dll_offset": "0x1058977",
+      "value": [
+        "https://store.steampowered.com/join/ajaxverifyemail"
+      ]
+    },
+    {
+      "module": "__main__",
+      "index": 84,
+      "main_dll_offset": "0x10589e5",
+      "value": "accountname"
+    },
+    {
+      "module": "__main__",
+      "index": 85,
+      "main_dll_offset": "0x10589f2",
+      "value": "password"
+    },
+    {
+      "module": "__main__",
+      "index": 86,
+      "main_dll_offset": "0x10589fc",
+      "value": "count"
+    },
+    {
+      "module": "__main__",
+      "index": 87,
+      "main_dll_offset": "0x1058a03",
+      "value": "lt"
+    },
+    {
+      "module": "__main__",
+      "index": 88,
+      "main_dll_offset": "0x1058a07",
+      "value": "creation_sessionid"
+    },
+    {
+      "module": "__main__",
+      "index": 89,
+      "main_dll_offset": "0x1058a1b",
+      "value": "embedded_appid"
+    },
+    {
+      "module": "__main__",
+      "index": 90,
+      "main_dll_offset": "0x1058a2b",
+      "value": [
+        "https://store.steampowered.com/join/createaccount/"
+      ]
+    },
+    {
+      "module": "__main__",
+      "index": 91,
+      "main_dll_offset": "0x1058a61",
+      "value": "bSuccess"
+    },
+    {
+      "module": "__main__",
+      "index": 110,
+      "main_dll_offset": "0x1058af6",
+      "value": "pypop"
+    },
+    {
+      "module": "__main__",
+      "index": 114,
+      "main_dll_offset": "0x1058b05",
+      "value": "pyimap"
+    },
+    {
+      "module": "__main__",
+      "index": 118,
+      "main_dll_offset": "0x1058b13",
+      "value": "wrgraph"
+    },
+    {
+      "module": "__main__",
+      "index": 127,
+      "main_dll_offset": "0x1058b94",
+      "value": "captchaType"
+    },
+    {
+      "module": "__main__",
+      "index": 128,
+      "main_dll_offset": "0x1058ba1",
+      "value": "HCaptchaSteam"
+    },
+    {
+      "module": "__main__",
+      "index": 129,
+      "main_dll_offset": "0x1058bb0",
+      "value": "siteReferer"
+    },
+    {
+      "module": "__main__",
+      "index": 130,
+      "main_dll_offset": "0x1058bbd",
+      "value": "https://store.steampowered.com/join/"
+    },
+    {
+      "module": "__main__",
+      "index": 131,
+      "main_dll_offset": "0x1058be3",
+      "value": "siteKey"
+    },
+    {
+      "module": "__main__",
+      "index": 132,
+      "main_dll_offset": "0x1058bec",
+      "value": [
+        "https://api.captcha-run.com/v2/tasks"
+      ]
+    },
+    {
+      "module": "__main__",
+      "index": 134,
+      "main_dll_offset": "0x1058c25",
+      "value": "taskId"
+    },
+    {
+      "module": "__main__",
+      "index": 135,
+      "main_dll_offset": "0x1058c2d",
+      "value": "https://api.captcha-run.com/v2/tasks/"
+    },
+    {
+      "module": "__main__",
+      "index": 136,
+      "main_dll_offset": "0x1058c54",
+      "value": "Success"
+    },
+    {
+      "module": "__main__",
+      "index": 137,
+      "main_dll_offset": "0x1058c5d",
+      "value": "response"
+    },
+    {
+      "module": "__main__",
+      "index": 138,
+      "main_dll_offset": "0x1058c67",
+      "value": "captcha_key"
+    },
+    {
+      "module": "__main__",
+      "index": 139,
+      "main_dll_offset": "0x1058c74",
+      "value": "Fail"
+    },
+    {
+      "module": "__main__",
+      "index": 170,
+      "main_dll_offset": "0x1058dc6",
+      "value": "getrefreshcaptcha"
+    },
+    {
+      "module": "__main__",
+      "index": 174,
+      "main_dll_offset": "0x1058e22",
+      "value": "sendmail"
+    },
+    {
+      "module": "__main__",
+      "index": 178,
+      "main_dll_offset": "0x1058e5b",
+      "value": "getsteamreg"
+    },
+    {
+      "module": "__main__",
+      "index": 188,
+      "main_dll_offset": "0x1058ecc",
+      "value": "streg"
+    },
+    {
+      "module": "getmail",
+      "index": 3,
+      "main_dll_offset": "0x10b584a",
+      "value": "client_id"
+    },
+    {
+      "module": "getmail",
+      "index": 4,
+      "main_dll_offset": "0x10b5855",
+      "value": "grant_type"
+    },
+    {
+      "module": "getmail",
+      "index": 5,
+      "main_dll_offset": "0x10b5861",
+      "value": "refresh_token"
+    },
+    {
+      "module": "getmail",
+      "index": 6,
+      "main_dll_offset": "0x10b5870",
+      "value": "https://graph.microsoft.com/.default"
+    },
+    {
+      "module": "getmail",
+      "index": 7,
+      "main_dll_offset": "0x10b5896",
+      "value": "scope"
+    },
+    {
+      "module": "getmail",
+      "index": 10,
+      "main_dll_offset": "0x10b58ad",
+      "value": [
+        "https://login.microsoftonline.com/consumers/oauth2/v2.0/token"
+      ]
+    },
+    {
+      "module": "getmail",
+      "index": 39,
+      "main_dll_offset": "0x10b5a04",
+      "value": "email"
+    },
+    {
+      "module": "getmail",
+      "index": 78,
+      "main_dll_offset": "0x10b5c98",
+      "value": [
+        "https://graph.microsoft.com/v1.0/me/messages?$top=1&$orderby=receivedDateTime desc"
+      ]
+    },
+    {
+      "module": "getmail",
+      "index": 85,
+      "main_dll_offset": "0x10b5d1f",
+      "value": "https://store.steampowered.com/account/newaccountverification\\?stoken=[a-f0-9]+&amp;creationid=\\d+"
+    },
+    {
+      "module": "getmail",
+      "index": 95,
+      "main_dll_offset": "0x10b5de6",
+      "value": "pyimap"
+    },
+    {
+      "module": "getmail",
+      "index": 103,
+      "main_dll_offset": "0x10b5e4e",
+      "value": "getsteamreg"
+    },
+    {
+      "module": "getmail",
+      "index": 107,
+      "main_dll_offset": "0x10b5e82",
+      "value": "pypop"
+    },
+    {
+      "module": "getmail",
+      "index": 115,
+      "main_dll_offset": "0x10b5ef1",
+      "value": "wrgraph"
+    }
+  ]
+}

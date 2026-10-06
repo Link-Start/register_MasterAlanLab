@@ -1,0 +1,46 @@
+# 唯一配置文件；复制为 config.yaml 后填写。相对路径以配置文件所在目录为基准。
+STEAM_PROXY: ""                  # http://user:password@host:port 或 socks5://host:port
+STEAM_TIMEOUT: 30
+STEAM_IMPERSONATE: chrome146
+STEAM_LANGUAGE: schinese
+STEAM_COUNTRY: ""                # 可选：注册页 cc 参数，例如 US
+STEAM_POLL_INTERVAL: 3
+STEAM_VERIFY_TIMEOUT: 60
+STEAM_CAPTCHA_ATTEMPTS: 2         # 仅 success=101 时刷新验证码并重新打码
+BATCH_DELAY: 5
+
+# 自动验证码识别；Key 留空时在终端手动输入验证码结果。
+CAPTCHA_RUN_KEY: ""
+CAPTCHA_RUN_BASE_URL: https://api.captcha.run/v2/tasks
+CAPTCHA_RUN_POLL_INTERVAL: 3
+CAPTCHA_RUN_MAX_WAIT: 120
+
+# auto：四段 OAuth 邮箱走 Graph，两段邮箱走 IMAP，单个地址手动输入验证链接。
+MAIL_PROVIDER: auto              # auto / graph / imap / pop3 / manual / corouter
+MAIL_FILE: ""
+MAIL_MAX_WAIT: 300
+MAIL_POLL_INTERVAL: 5
+MAIL_REQUEST_TIMEOUT: 30
+MAIL_SCAN_LIMIT: 20
+
+# Corouter 托管邮箱；使用租户中已有的邮箱，无需邮箱密码或导入文件。
+COROUTER_MAIL_BASE_URL: https://mail.corouter.cc
+COROUTER_MAIL_TENANT_ID: ""
+COROUTER_MAIL_API_KEY: ""         # 自己的 API Key，也可填写 Authorization: Bearer ...
+COROUTER_MAIL_GROUP_ID: ""        # 可选：分组 ID 或名称
+COROUTER_MAIL_REQUEST_TIMEOUT: 90
+COROUTER_MAIL_POLL_INTERVAL: 5
+
+IMAP_HOST: outlook.office365.com
+IMAP_PORT: 993
+IMAP_FOLDERS: [INBOX, Junk, "Junk Email", Spam]
+POP3_HOST: outlook.office365.com
+POP3_PORT: 995
+
+ACCOUNT_PREFIX: ""              # 可选前缀；默认名称如 QingFeng4827、XingHe7316
+ACCOUNT_NAME_ATTEMPTS: 8        # 自动生成的名称重名时，最多检查几个名称
+STEAM_PASSWORD: ""              # 留空则生成随机密码；不会使用邮箱密码作为 Steam 密码
+STEAM_OUTPUT: accounts.csv
+STEAM_TEXT_OUTPUT: ""           # 可选 TXT：账户名----Steam密码----邮箱
+STEAM_FAILED_OUTPUT: failed.jsonl
+STEAM_ATTEMPTS_OUTPUT: attempts.jsonl  # 请求前保存凭据，供结果未知或输出失败时恢复

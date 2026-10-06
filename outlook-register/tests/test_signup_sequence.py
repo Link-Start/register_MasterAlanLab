@@ -53,7 +53,7 @@ class SessionAdapter:
 
 def test_reconstructed_registration_order():
     fake = FakeSession()
-    protocol = OutlookSignupProtocol(Settings(), session=fake)
+    protocol = OutlookSignupProtocol(Settings(captcha_run_key="test-user-key"), session=fake)
     protocol.session = fake
     protocol.session.json = SessionAdapter.json
     item = RegistrationInput(member_name="demo@example.com", password="Password123!", captcha_token="CAPTCHA")
@@ -72,6 +72,42 @@ def test_reconstructed_registration_order():
     assert create_payload["MemberName"] == item.member_name
     assert create_payload["SiteId"] == "00000000487A244A"
     assert create_payload["ContinuationToken"] == "RISK_CONT"
+
+
+def test_captcha_task_matches_api_contract():
+    settings = Settings(captcha_run_key="test-user-key")
+    fake = FakeSession()
+    fake.responses[5:5] = [
+        FakeResponse({"taskId": "captcha-task"}),
+        FakeResponse(
+            {
+                "status": "Success",
+                "response": {"silentToken": "silent", "pressToken": "press", "origin": "origin"},
+            }
+        ),
+    ]
+    protocol = OutlookSignupProtocol(settings, session=fake)
+    protocol.session.json = SessionAdapter.json
+    item = RegistrationInput(member_name="demo@example.com", password="Password123!")
+
+    result = protocol.register(item, execute=True)
+
+    assert result.success
+    task_calls = [call for call in fake.calls if call[1].startswith(settings.captcha_run_base_url)]
+    assert [method for method, _, _ in task_calls] == ["POST", "GET"]
+    payload = task_calls[0][2]["json"]
+    assert payload == {
+        "captchaType": "PxCaptcha2",
+        "uaid": protocol.fingerprint.uaid,
+        "timezone": 480,
+        "country": "US",
+        "developer": "542f4f4f-31b6-4b70-b485-c4762c45d1e8",
+    }
+    assert all(
+        kwargs["headers"]["Authorization"] == "Bearer test-user-key"
+        for _, _, kwargs in task_calls
+    )
+    assert "json" not in task_calls[1][2]
 
 
 def test_username_api_error_is_not_reported_as_dry_run_success():
